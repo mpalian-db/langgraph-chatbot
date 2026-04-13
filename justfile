@@ -1,6 +1,7 @@
 set dotenv-load := true
 
-# Start Qdrant + Langfuse + backend + frontend for local dev
+# Start Qdrant + Langfuse + backend + frontend for local dev.
+# Note: requires frontend/ to be scaffolded (see Task 25) before first run.
 dev:
     docker compose up qdrant langfuse-db langfuse-server -d
     cd backend && uv run uvicorn app.main:app --reload --port 8000 &
