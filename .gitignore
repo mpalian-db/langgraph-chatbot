@@ -1,0 +1,22 @@
+# Git worktrees
+.worktrees/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+.mypy_cache/
+.ruff_cache/
+
+# Environment
+.env
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# OS
+.DS_Store
