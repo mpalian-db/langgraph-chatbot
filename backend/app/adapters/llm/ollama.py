@@ -30,7 +30,11 @@ class OllamaLLMAdapter:
             ollama_messages.append({"role": "system", "content": system})
         ollama_messages.extend(messages)
 
-        kwargs: dict[str, Any] = {"model": model, "messages": ollama_messages}
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": ollama_messages,
+            "options": {"num_predict": max_tokens},
+        }
         if tools:
             kwargs["tools"] = tools
 
