@@ -81,3 +81,102 @@ async def test_ollama_adapter_passes_tools():
 
     assert result["stop_reason"] == "tool_use"
     assert result["tool_use"][0]["name"] == "search"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_adapter_formats_response():
+    from app.adapters.llm.anthropic import AnthropicLLMAdapter
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(type="text", text="Hello there")]
+    mock_response.stop_reason = "end_turn"
+    mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    adapter = AnthropicLLMAdapter(client=mock_client)
+    result = await adapter.complete(
+        messages=[{"role": "user", "content": "Hi"}],
+        model="claude-haiku-4-5-20251001",
+        system="Be helpful.",
+        max_tokens=100,
+    )
+
+    assert result["text"] == "Hello there"
+    assert result["stop_reason"] == "end_turn"
+    assert result["usage"]["input_tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_anthropic_adapter_passes_tools():
+    from app.adapters.llm.anthropic import AnthropicLLMAdapter
+
+    mock_response = MagicMock()
+    mock_response.content = [MagicMock(type="text", text="result")]
+    mock_response.stop_reason = "end_turn"
+    mock_response.usage = MagicMock(input_tokens=5, output_tokens=3)
+
+    mock_client = AsyncMock()
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    adapter = AnthropicLLMAdapter(client=mock_client)
+    tools = [{"name": "search", "description": "search docs", "input_schema": {"type": "object"}}]
+    await adapter.complete(
+        messages=[{"role": "user", "content": "search something"}],
+        model="claude-haiku-4-5-20251001",
+        tools=tools,
+        max_tokens=100,
+    )
+
+    call_kwargs = mock_client.messages.create.call_args.kwargs
+    assert call_kwargs["tools"] == tools
+
+
+@pytest.mark.asyncio
+async def test_workers_ai_embedding_returns_vectors():
+    from app.adapters.embeddings.workers_ai import WorkersAIEmbeddingAdapter
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "result": {"data": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]},
+        "success": True,
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+
+    adapter = WorkersAIEmbeddingAdapter(
+        account_id="test-account",
+        api_token="test-token",
+        model="@cf/baai/bge-small-en-v1.5",
+        http_client=mock_client,
+    )
+    vectors = await adapter.embed(["hello", "world"])
+
+    assert len(vectors) == 2
+    assert len(vectors[0]) == 3
+    assert vectors[0][0] == pytest.approx(0.1)
+
+
+@pytest.mark.asyncio
+async def test_ollama_embedding_returns_vectors():
+    from app.adapters.embeddings.ollama import OllamaEmbeddingAdapter
+
+    mock_response = MagicMock()
+    mock_response.embeddings = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+
+    mock_client = AsyncMock()
+    mock_client.embed = AsyncMock(return_value=mock_response)
+
+    adapter = OllamaEmbeddingAdapter(
+        model="nomic-embed-text",
+        client=mock_client,
+    )
+    vectors = await adapter.embed(["hello", "world"])
+
+    assert len(vectors) == 2
+    assert len(vectors[0]) == 3
+    assert vectors[0][0] == pytest.approx(0.1)
+    mock_client.embed.assert_awaited_once_with(model="nomic-embed-text", input=["hello", "world"])
