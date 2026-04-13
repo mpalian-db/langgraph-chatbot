@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.core.config.models import AgentsConfig, SystemConfig
 from app.core.config.loader import load_agents_config, load_system_config
@@ -20,7 +21,7 @@ def test_agents_config_defaults():
 
 
 def test_system_config_rejects_unknown_keys():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         SystemConfig.model_validate({"environment": {"mode": "local"}, "unknown_key": "bad"})
 
 
