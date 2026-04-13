@@ -4,74 +4,95 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-Local-first multi-agent RAG chat application. A learning/experimentation platform for graph-based agent orchestration, retrieval-augmented generation, grounded response verification, configurable agents, and tool calling. Uses the Anthropic API. Designed for local development first with a future Cloudflare deployment path.
+Local-first multi-agent RAG chat application. A learning and experimentation platform for graph-based agent orchestration, retrieval-augmented generation, grounded response verification, configurable agents, and tool calling. Designed local-first with a path to Cloudflare deployment.
 
-Full design spec: `multi-agent-rag-project-description.md`
+Full technical design spec: `docs/superpowers/specs/2026-04-10-multi-agent-rag-chatbot-design.md`
 
-## Planned stack
+## Stack
 
-- **Orchestration:** LangGraph (graph-based workflow)
-- **LLM provider:** Anthropic API (Messages API, tool use, Python SDK)
-- **Vector store:** Qdrant (local Docker container for dev, Qdrant Cloud or self-hosted for prod)
-- **Configuration:** TOML files for agent behaviour, routing rules, tool permissions, thresholds
-- **API:** FastAPI (async)
-- **Frontend:** Static SPA (framework TBD), deployed to Cloudflare Pages
-- **Language:** Python (backend), TypeScript/JavaScript (frontend)
-- **Deployment target:** Cloudflare (Pages for frontend, Workers for API/backend)
+| Layer | Choice |
+|---|---|
+| Orchestration | LangGraph (minimal LangChain -- direct adapters only) |
+| LLM | Ollama (default, local) / Anthropic API (alternative, configurable via TOML) |
+| Vector store | Qdrant (local dev via Docker) / Cloudflare Vectorize (production) |
+| Embeddings | Ollama `nomic-embed-text` (default, 768-dim) / Cloudflare Workers AI (alternative) |
+| Backend API | FastAPI (async) |
+| Frontend | React + TypeScript + Vite + Tailwind CSS |
+| Configuration | TOML files (`config/config.toml`, `config/agents.toml`) |
+| Observability | Langfuse (self-hosted via Docker) |
+| Automation sidecar | n8n (local Docker, ingestion and maintenance workflows) |
+| Dev access | Tailscale Serve (private tailnet HTTPS) |
+| Task runner | justfile |
+| Dependency management | uv (Python), npm (frontend) |
+
+## Commands
+
+```bash
+just dev            # start Qdrant + Langfuse + uvicorn + vite dev
+just dev-full       # as above, plus n8n
+just test           # run unit tests only
+just test-all       # run unit + integration tests
+just test-one FILE  # run a single test file
+just lint           # ruff check + ruff format --check
+just format         # ruff format
+```
+
+Integration tests require Qdrant (Docker) and Ollama running locally, and are gated behind a pytest marker. The frontend runs via `vite dev` outside Docker (not containerised -- hot reload is faster).
 
 ## Architecture
 
-Hexagonal Architecture: inbound adapters (API/CLI) -> core domain (graph, agents, verification) -> outbound adapters (Anthropic SDK, vector DB, file storage).
+Hexagonal Architecture: inbound adapters (FastAPI routes) -> core domain (graph, agents, verification) -> outbound adapters (Ollama client, Qdrant client, filesystem).
 
-### Graph structure (v1)
+**The core domain has zero external dependencies.** All I/O crosses a port defined as a Python Protocol in `backend/app/ports/`. `core/` never imports from `adapters/` -- only from `ports/`.
+
+Adapters are injected at startup via FastAPI's dependency system. `llm.provider` and `embeddings.provider` in `config/config.toml` drive adapter selection in `dependencies.py`. The only things that change between local dev and Cloudflare deployment are the vector store and embedding adapters.
+
+### Graph structure
 
 Three execution paths through a shared LangGraph graph:
 
 - **Direct chat:** `user_query -> router -> chat_agent -> final_response`
-- **RAG:** `user_query -> router -> retrieval_agent -> answer_node -> verification_agent -> final_response`
-- **Failed grounding:** same as RAG but verification returns `revise` or `refuse`
+- **RAG:** `user_query -> router -> retrieval -> answer_generation -> verifier -> final_response`
+- **Tool use:** `user_query -> router -> tool_agent -> final_response`
 
-### Node roles
+The graph structure (router -> retrieval -> answer -> verify) is fixed in code. Each node is a thin wrapper delegating to a pluggable implementation resolved from TOML config. Config controls model, prompt, thresholds, and tool permissions -- not graph topology. Adding a new graph path requires a deliberate code change.
 
-| Node | Responsibility |
-|---|---|
-| Router / orchestrator | Classify intent, decide path (direct chat vs RAG vs tool) |
-| Chat agent | Handle general conversation, present final responses |
-| Retrieval agent | Vector search, metadata filtering, reranking, build evidence bundle |
-| Answer generation | Produce draft answer from retrieved chunks with citations |
-| Verification / grounding | Check answer-to-evidence support; decide accept/revise/refuse |
-| Tool-using agents | Interact with structured tools (ingestion, system inspection, utilities) |
+### Node function signature
 
-### Graph state
+Each node is a pure async function:
 
-State flowing through the graph includes: original query, route decision, rewritten retrieval query, retrieved chunks with scores, metadata filters, draft answer, verifier result and grounding status, citations, tool calls made, and execution trace.
-
-### TOML configuration
-
-Agents are configured via TOML: enabled flag, model selection, prompts, routing rules, tool permissions, retrieval/verification thresholds, retry policies, recursion limits, collection bindings, logging verbosity, environment mode.
-
-### Verification approach
-
-Grounding verification goes beyond cosine similarity. Combine: retrieval score thresholds, semantic similarity, answer-to-evidence support checks, citation coverage, unsupported claim detection. Outcomes: `accept`, `revise`, `refuse`.
-
-## Build and run commands
-
-*(To be updated once the project is scaffolded)*
-
-```bash
-# TBD: install dependencies
-# TBD: run the local server
-# TBD: run tests
-# TBD: run a single test
-# TBD: lint / format
+```python
+async def node_fn(state: GraphState, config: AgentConfig) -> GraphState
 ```
+
+TOML config is injected at graph construction time via `functools.partial`.
+
+### Node model assignments (defaults)
+
+| Node | Default model |
+|---|---|
+| Router, Chat agent, Tool agent | `llama3.2:3b` |
+| Answer generation, Verifier | `llama3.1:8b` |
+
+Override by setting `model = "..."` in `config/agents.toml`. Anthropic models (`claude-haiku-4-5-20251001`, `claude-sonnet-4-6-20250514`) work when `llm.provider = "anthropic"`.
+
+### Verifier outcomes
+
+`accept` -> pass through. `revise` -> loop back to answer generation with feedback (up to `max_retries` from TOML). `refuse` -> return "cannot answer" with reason. The verifier combines: retrieval score thresholds, LLM-based support analysis, citation coverage, and unsupported claim detection.
+
+### Config files
+
+`config/` lives at the project root, shared between backend and scripts. `corpus/` holds raw source documents for ingestion (separate from `docs/`). The sample dataset is a curated subset of LangGraph documentation (`corpus/langgraph-docs/`).
+
+## Testing
+
+pytest with pytest-asyncio. Unit tests mock all ports and test core logic in isolation. The verifier gets the most thorough unit tests. Integration tests hit real services (Qdrant via Docker, Ollama). Integration tests are gated behind a pytest marker and live in `backend/tests/integration/`.
 
 ## Conventions
 
 - British English in all documentation and comments.
 - No emojis anywhere (docs, commits, comments, output).
 - Keep README concise; detailed docs go under `docs/`.
-- Split interfaces into single-concern protocols. Never aggregate read, write, and mutation behind one interface.
-- Pure async functions for graph stages; routing predicates as pure closures with config injected via partial application.
-- Stages declare `requires`/`produces`; a runner manages context.
-- Isolate side effects (Anthropic API calls, vector DB, file I/O) at the boundaries behind ports.
+- Split ports into single-concern Protocols. Never aggregate read, write, and mutation behind one interface.
+- Node functions are pure async; TOML config is injected at construction time via `functools.partial`, never captured from globals.
+- Isolate side effects (LLM API calls, vector DB, file I/O) at the boundaries behind ports.
