@@ -1,0 +1,61 @@
+[router]
+enabled = true
+model = "llama3.2:3b"
+# Anthropic alternative: model = "claude-haiku-4-5-20251001"
+prompt = """You are a routing agent. Given the user's message, classify it into one of these routes:
+- "chat": general conversation, greetings, meta questions about the system
+- "rag": questions that likely require searching indexed knowledge
+- "tool": requests to inspect collections, upload documents, or run system operations
+
+Respond with ONLY the route name: chat, rag, or tool."""
+routes = ["chat", "rag", "tool"]
+
+[chat_agent]
+enabled = true
+model = "llama3.2:3b"
+# Anthropic alternative: model = "claude-haiku-4-5-20251001"
+system_prompt = "You are a helpful assistant. Answer the user's questions clearly and concisely."
+max_tokens = 2048
+
+[retrieval]
+enabled = true
+top_k = 10
+score_threshold = 0.7
+rerank = true
+default_collection = "langgraph-docs"
+
+[answer_generation]
+enabled = true
+model = "llama3.1:8b"
+# Anthropic alternative: model = "claude-sonnet-4-6-20250514"
+prompt_template = """Answer the user's question using ONLY the evidence below. Include inline citations using chunk IDs like [chunk-id].
+
+Evidence:
+{evidence}
+
+Question: {query}
+
+If the evidence does not support a complete answer, say what you can support and indicate what is missing."""
+max_tokens = 2048
+
+[verifier]
+enabled = true
+model = "llama3.1:8b"
+# Anthropic alternative: model = "claude-sonnet-4-6-20250514"
+score_threshold = 0.75
+citation_coverage_min = 0.8
+max_retries = 2
+checks = ["score_threshold", "support_analysis", "citation_coverage"]
+
+[tool_agent]
+enabled = true
+model = "llama3.2:3b"
+# Anthropic alternative: model = "claude-haiku-4-5-20251001"
+allowed_tools = [
+    "search_collection",
+    "list_collections",
+    "get_collection_stats",
+    "upload_document",
+    "delete_document",
+]
+max_tool_calls = 5

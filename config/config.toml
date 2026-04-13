@@ -1,0 +1,29 @@
+[environment]
+mode = "local"
+log_level = "debug"
+
+[llm]
+provider = "ollama"                     # "ollama" (default) or "anthropic"
+ollama_base_url = "http://localhost:11434"
+
+[tracing]
+langfuse_enabled = true
+langfuse_host = "http://localhost:3000" # self-hosted; or "https://cloud.langfuse.com"
+langfuse_project = "langgraph-chatbot"
+
+[vectorstore]
+provider = "qdrant"
+qdrant_url = "http://localhost:6333"
+
+[embeddings]
+provider = "ollama"                     # "ollama" (default) or "workers-ai"
+ollama_model = "nomic-embed-text"       # 768-dimension embeddings
+ollama_base_url = "http://localhost:11434"
+# workers-ai settings (uncomment for Cloudflare deployment):
+# workers_ai_model = "@cf/baai/bge-small-en-v1.5"
+# workers_ai_base_url = "https://api.cloudflare.com/client/v4/accounts"
+
+[ingestion]
+chunk_size = 512
+chunk_overlap = 64
+supported_formats = ["md", "txt", "pdf"]
