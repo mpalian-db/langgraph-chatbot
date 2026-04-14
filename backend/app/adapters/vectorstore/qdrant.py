@@ -69,6 +69,35 @@ class QdrantVectorStoreAdapter:
     async def delete_collection(self, name: str) -> None:
         await self._client.delete_collection(collection_name=name)
 
+    async def list_documents(
+        self,
+        collection: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Chunk]:
+        """Scroll through points in a collection and return them as Chunks."""
+        result = await self._client.scroll(
+            collection_name=collection,
+            limit=limit,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        points, _next_offset = result
+        return [
+            Chunk(
+                id=str(p.id),
+                text=(p.payload or {}).get("text", ""),
+                collection=collection,
+                metadata={
+                    k: v
+                    for k, v in (p.payload or {}).items()
+                    if k not in ("text", "chunk_id")
+                },
+            )
+            for p in points
+        ]
+
     async def get_stats(self, name: str) -> dict:
         info = await self._client.get_collection(collection_name=name)
         return {

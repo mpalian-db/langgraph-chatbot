@@ -1,0 +1,90 @@
+"""Document ingestion and listing endpoints."""
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, UploadFile
+from pydantic import BaseModel
+
+from app.api.dependencies import (
+    EmbeddingDep,
+    StorageDep,
+    SystemConfigDep,
+    VectorStoreDep,
+)
+from app.ingestion.pipeline import ingest_document
+
+router = APIRouter(prefix="/documents", tags=["documents"])
+
+# ---------------------------------------------------------------------------
+# Response models
+# ---------------------------------------------------------------------------
+
+
+class IngestResponse(BaseModel):
+    filename: str
+    collection: str
+    chunk_count: int
+
+
+class DocumentOut(BaseModel):
+    id: str
+    text: str
+    collection: str
+    metadata: dict
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("", response_model=IngestResponse, status_code=201)
+async def upload_document(
+    file: UploadFile,
+    collection: str,
+    system_config: SystemConfigDep,
+    storage: StorageDep,
+    embedding: EmbeddingDep,
+    vectorstore: VectorStoreDep,
+) -> IngestResponse:
+    """Ingest a document: store, chunk, embed, and upsert into the vector store."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+
+    content = await file.read()
+
+    chunk_count = await ingest_document(
+        file.filename,
+        content,
+        collection,
+        storage,
+        embedding,
+        vectorstore,
+        chunk_size=system_config.ingestion.chunk_size,
+        chunk_overlap=system_config.ingestion.chunk_overlap,
+    )
+
+    return IngestResponse(
+        filename=file.filename,
+        collection=collection,
+        chunk_count=chunk_count,
+    )
+
+
+@router.get("/{collection}", response_model=list[DocumentOut])
+async def list_documents(
+    collection: str,
+    vectorstore: VectorStoreDep,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[DocumentOut]:
+    """List documents (chunks) in a collection."""
+    chunks = await vectorstore.list_documents(collection, limit=limit, offset=offset)
+    return [
+        DocumentOut(
+            id=c.id,
+            text=c.text,
+            collection=c.collection,
+            metadata=c.metadata,
+        )
+        for c in chunks
+    ]

@@ -25,6 +25,13 @@ class VectorStorePort(Protocol):
 
     async def delete(self, collection: str, ids: list[str]) -> None: ...
 
+    async def list_documents(
+        self,
+        collection: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Chunk]: ...
+
 
 @runtime_checkable
 class CollectionPort(Protocol):
