@@ -12,7 +12,7 @@ from app.api.dependencies import (
 )
 from app.ingestion.pipeline import ingest_document
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(prefix="/collections", tags=["documents"])
 
 # ---------------------------------------------------------------------------
 # Response models
@@ -37,10 +37,10 @@ class DocumentOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.post("", response_model=IngestResponse, status_code=201)
+@router.post("/{collection}/documents", response_model=IngestResponse, status_code=201)
 async def upload_document(
-    file: UploadFile,
     collection: str,
+    file: UploadFile,
     system_config: SystemConfigDep,
     storage: StorageDep,
     embedding: EmbeddingDep,
@@ -70,7 +70,7 @@ async def upload_document(
     )
 
 
-@router.get("/{collection}", response_model=list[DocumentOut])
+@router.get("/{collection}/documents", response_model=list[DocumentOut])
 async def list_documents(
     collection: str,
     vectorstore: VectorStoreDep,

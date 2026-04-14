@@ -48,7 +48,7 @@ async def create_collection(
     return {"name": body.name, "status": "created"}
 
 
-@router.get("/{name}/stats", response_model=CollectionStatsResponse)
+@router.get("/{name}", response_model=CollectionStatsResponse)
 async def get_collection_stats(
     name: str,
     collection_store: CollectionDep,
