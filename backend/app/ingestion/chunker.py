@@ -23,15 +23,17 @@ def chunk_text(
 
         segment = text[start:end].strip()
         if segment:
-            chunks.append({
-                "id": str(uuid.uuid4()),
-                "text": segment,
-                "collection": collection,
-                "metadata": {
-                    "filename": filename,
-                    "chunk_index": len(chunks),
-                },
-            })
+            chunks.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "text": segment,
+                    "collection": collection,
+                    "metadata": {
+                        "filename": filename,
+                        "chunk_index": len(chunks),
+                    },
+                }
+            )
 
         if end >= len(text):
             break

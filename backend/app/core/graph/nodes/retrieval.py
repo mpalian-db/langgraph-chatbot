@@ -35,7 +35,8 @@ async def run(
     return {
         "retrieved_chunks": chunks,
         "retrieval_scores": [c.score for c in chunks],
-        "execution_trace": state.execution_trace + [
+        "execution_trace": state.execution_trace
+        + [
             TraceEntry(
                 node="retrieval",
                 duration_ms=elapsed_ms,

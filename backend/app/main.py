@@ -1,4 +1,5 @@
 """FastAPI application entry point."""
+
 from __future__ import annotations
 
 import logging
@@ -25,7 +26,6 @@ async def lifespan(app: FastAPI):
 
             app.state.langfuse = Langfuse(
                 host=config.tracing.langfuse_host,
-                project_name=config.tracing.langfuse_project,
             )
             logger.info(
                 "Langfuse tracing enabled (host=%s, project=%s)",

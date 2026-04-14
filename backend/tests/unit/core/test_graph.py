@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.core.config.models import AgentsConfig
 from app.core.graph.graph import build_graph
@@ -25,20 +26,22 @@ async def test_graph_compiles(mock_llm, mock_vectorstore, mock_collection_store,
 @pytest.mark.asyncio
 async def test_graph_chat_path(mock_llm, mock_vectorstore, mock_collection_store, mock_embedding):
     # Router returns "chat", chat agent returns a final answer
-    mock_llm.complete = AsyncMock(side_effect=[
-        {  # router
-            "text": "chat",
-            "tool_use": [],
-            "stop_reason": "end_turn",
-            "usage": {"input_tokens": 5, "output_tokens": 1},
-        },
-        {  # chat agent
-            "text": "Hello! I can help with that.",
-            "tool_use": [],
-            "stop_reason": "end_turn",
-            "usage": {"input_tokens": 10, "output_tokens": 8},
-        },
-    ])
+    mock_llm.complete = AsyncMock(
+        side_effect=[
+            {  # router
+                "text": "chat",
+                "tool_use": [],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 5, "output_tokens": 1},
+            },
+            {  # chat agent
+                "text": "Hello! I can help with that.",
+                "tool_use": [],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            },
+        ]
+    )
     config = AgentsConfig()
     graph = build_graph(
         agents_config=config,

@@ -31,7 +31,6 @@ async def run(
     elapsed_ms = (time.monotonic() - start) * 1000
     return {
         "route": route,
-        "execution_trace": state.execution_trace + [
-            TraceEntry(node="router", duration_ms=elapsed_ms, data={"route": route})
-        ],
+        "execution_trace": state.execution_trace
+        + [TraceEntry(node="router", duration_ms=elapsed_ms, data={"route": route})],
     }

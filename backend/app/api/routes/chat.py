@@ -1,4 +1,5 @@
 """Chat endpoints -- synchronous and streaming."""
+
 from __future__ import annotations
 
 import logging

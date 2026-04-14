@@ -26,17 +26,14 @@ async def run(
                 outcome="refuse",
                 score=max_score,
                 reason=(
-                    f"Max retrieval score {max_score:.2f} "
-                    f"below threshold {config.score_threshold}"
+                    f"Max retrieval score {max_score:.2f} below threshold {config.score_threshold}"
                 ),
             )
             return _build_return(state, result, start, refuse=True)
 
     # Check 2: LLM-based support analysis
     if "support_analysis" in config.checks:
-        evidence = "\n\n".join(
-            f"[{c.id}] {c.text}" for c in state.retrieved_chunks
-        )
+        evidence = "\n\n".join(f"[{c.id}] {c.text}" for c in state.retrieved_chunks)
         prompt = (
             "You are a grounding verifier. Determine if the answer "
             "is supported by the evidence.\n\n"
@@ -90,9 +87,7 @@ def _build_return(
     elif revise:
         update["retry_count"] = state.retry_count + 1
     elif refuse:
-        update["final_answer"] = (
-            f"I cannot provide a fully supported answer. {result.reason}"
-        )
+        update["final_answer"] = f"I cannot provide a fully supported answer. {result.reason}"
     return update
 
 
@@ -107,8 +102,7 @@ def _parse_verifier_response(text: str) -> VerifierResult:
     reason = reason_match.group(1).strip() if reason_match else "Unable to verify"
     unsupported_raw = unsupported_match.group(1).strip() if unsupported_match else "NONE"
     unsupported = (
-        [] if unsupported_raw.upper() == "NONE"
-        else [c.strip() for c in unsupported_raw.split(",")]
+        [] if unsupported_raw.upper() == "NONE" else [c.strip() for c in unsupported_raw.split(",")]
     )
 
     return VerifierResult(

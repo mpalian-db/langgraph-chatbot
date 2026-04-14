@@ -3,6 +3,7 @@
 These require Qdrant (Docker) and Ollama running locally.
 Run with: pytest tests/integration/ -v
 """
+
 from __future__ import annotations
 
 import pytest

@@ -3,6 +3,7 @@
 These do not require external services -- config providers are overridden
 with in-memory defaults.
 """
+
 from __future__ import annotations
 
 import pytest

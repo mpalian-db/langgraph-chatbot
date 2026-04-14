@@ -18,4 +18,4 @@ class OllamaEmbeddingAdapter:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for a list of texts."""
         response = await self._client.embed(model=self._model, input=texts)
-        return response.embeddings
+        return [list(row) for row in response.embeddings]

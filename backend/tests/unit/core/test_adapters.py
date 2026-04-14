@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.adapters.storage.local import LocalFileStorageAdapter
+import pytest
+
 from app.adapters.llm.ollama import OllamaLLMAdapter
+from app.adapters.storage.local import LocalFileStorageAdapter
 
 
 @pytest.mark.asyncio

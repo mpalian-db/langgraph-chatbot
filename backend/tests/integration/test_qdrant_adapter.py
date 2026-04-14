@@ -28,7 +28,11 @@ async def test_collection(qdrant):
 @pytest.mark.asyncio
 async def test_upsert_and_search(qdrant, test_collection):
     chunks = [
-        Chunk(id=str(uuid.uuid4()), text="LangGraph builds stateful agents.", collection=test_collection),
+        Chunk(
+            id=str(uuid.uuid4()),
+            text="LangGraph builds stateful agents.",
+            collection=test_collection,
+        ),
     ]
     vectors = [[0.1, 0.2, 0.3, 0.4]]
     await qdrant.upsert(test_collection, chunks, vectors)

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.core.config.models import AgentsConfig, SystemConfig
 from app.core.models.types import Chunk
@@ -10,26 +11,30 @@ from app.core.models.types import Chunk
 @pytest.fixture
 def mock_llm():
     llm = AsyncMock()
-    llm.complete = AsyncMock(return_value={
-        "text": "mock response",
-        "tool_use": [],
-        "stop_reason": "end_turn",
-        "usage": {"input_tokens": 10, "output_tokens": 20},
-    })
+    llm.complete = AsyncMock(
+        return_value={
+            "text": "mock response",
+            "tool_use": [],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 20},
+        }
+    )
     return llm
 
 
 @pytest.fixture
 def mock_vectorstore():
     vs = AsyncMock()
-    vs.search = AsyncMock(return_value=[
-        Chunk(
-            id="chunk-1",
-            text="LangGraph is a library for building stateful agents.",
-            collection="test",
-            score=0.9,
-        ),
-    ])
+    vs.search = AsyncMock(
+        return_value=[
+            Chunk(
+                id="chunk-1",
+                text="LangGraph is a library for building stateful agents.",
+                collection="test",
+                score=0.9,
+            ),
+        ]
+    )
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
     return vs
@@ -41,7 +46,9 @@ def mock_collection_store():
     cs.create = AsyncMock()
     cs.list_collections = AsyncMock(return_value=["docs", "test"])
     cs.delete_collection = AsyncMock()
-    cs.get_stats = AsyncMock(return_value={"name": "docs", "vectors_count": 100, "points_count": 100})
+    cs.get_stats = AsyncMock(
+        return_value={"name": "docs", "vectors_count": 100, "points_count": 100}
+    )
     return cs
 
 

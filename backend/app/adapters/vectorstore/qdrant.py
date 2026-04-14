@@ -27,7 +27,7 @@ class QdrantVectorStoreAdapter:
         score_threshold: float = 0.0,
     ) -> list[Chunk]:
         qdrant_filter = _build_filter(filters) if filters else None
-        results = await self._client.search(
+        results = await self._client.search(  # type: ignore[attr-defined]
             collection_name=collection,
             query_vector=query_vector,
             limit=top_k,
@@ -54,7 +54,7 @@ class QdrantVectorStoreAdapter:
         await self._client.upsert(collection_name=collection, points=points)
 
     async def delete(self, collection: str, ids: list[str]) -> None:
-        await self._client.delete(collection_name=collection, points_selector=ids)
+        await self._client.delete(collection_name=collection, points_selector=ids)  # type: ignore[arg-type]
 
     async def create(self, name: str, vector_size: int) -> None:
         await self._client.create_collection(
@@ -90,9 +90,7 @@ class QdrantVectorStoreAdapter:
                 text=(p.payload or {}).get("text", ""),
                 collection=collection,
                 metadata={
-                    k: v
-                    for k, v in (p.payload or {}).items()
-                    if k not in ("text", "chunk_id")
+                    k: v for k, v in (p.payload or {}).items() if k not in ("text", "chunk_id")
                 },
             )
             for p in points
@@ -102,17 +100,14 @@ class QdrantVectorStoreAdapter:
         info = await self._client.get_collection(collection_name=name)
         return {
             "name": name,
-            "vectors_count": info.vectors_count,
-            "points_count": info.points_count,
+            "vectors_count": info.vectors_count,  # type: ignore[attr-defined]
+            "points_count": info.points_count,  # type: ignore[attr-defined]
         }
 
 
 def _build_filter(filters: dict) -> Filter:
-    conditions = [
-        FieldCondition(key=k, match=MatchValue(value=v))
-        for k, v in filters.items()
-    ]
-    return Filter(must=conditions)
+    conditions = [FieldCondition(key=k, match=MatchValue(value=v)) for k, v in filters.items()]
+    return Filter(must=conditions)  # type: ignore[arg-type]
 
 
 def _scored_point_to_chunk(point: ScoredPoint, collection: str) -> Chunk:

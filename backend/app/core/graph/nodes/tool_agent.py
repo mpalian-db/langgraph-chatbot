@@ -49,22 +49,33 @@ async def run(
                 embedding=embedding,
             )
             tool_calls_made.append(
-                ToolCall(name=tool_use["name"], arguments=tool_use["input"], result=str(tool_result))
+                ToolCall(
+                    name=tool_use["name"], arguments=tool_use["input"], result=str(tool_result)
+                )
             )
             messages.append({"role": "assistant", "content": response["text"] or ""})
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "tool_result", "tool_use_id": tool_use["id"], "content": str(tool_result)},
-                ],
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use["id"],
+                            "content": str(tool_result),
+                        },
+                    ],
+                }
+            )
 
     elapsed_ms = (time.monotonic() - start) * 1000
     return {
         "final_answer": final_text,
         "tool_calls": state.tool_calls + tool_calls_made,
-        "execution_trace": state.execution_trace + [
-            TraceEntry(node="tool_agent", duration_ms=elapsed_ms, data={"tool_calls": len(tool_calls_made)})
+        "execution_trace": state.execution_trace
+        + [
+            TraceEntry(
+                node="tool_agent", duration_ms=elapsed_ms, data={"tool_calls": len(tool_calls_made)}
+            )
         ],
     }
 

@@ -18,9 +18,7 @@ async def run(
 ) -> dict[str, Any]:
     start = time.monotonic()
 
-    evidence = "\n\n".join(
-        f"[{chunk.id}] {chunk.text}" for chunk in state.retrieved_chunks
-    )
+    evidence = "\n\n".join(f"[{chunk.id}] {chunk.text}" for chunk in state.retrieved_chunks)
     prompt = config.prompt_template.format(evidence=evidence, query=state.query)
 
     messages: list[dict[str, str]] = [{"role": "user", "content": prompt}]
@@ -28,13 +26,15 @@ async def run(
     # If revising, include previous verifier feedback
     if state.verifier_result and state.verifier_result.outcome == "revise":
         messages.append({"role": "assistant", "content": state.draft_answer or ""})
-        messages.append({
-            "role": "user",
-            "content": (
-                f"Please revise. Issues: {state.verifier_result.reason}. "
-                f"Unsupported claims: {', '.join(state.verifier_result.unsupported_claims)}"
-            ),
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"Please revise. Issues: {state.verifier_result.reason}. "
+                    f"Unsupported claims: {', '.join(state.verifier_result.unsupported_claims)}"
+                ),
+            }
+        )
 
     response = await llm.complete(
         messages=messages,
@@ -49,7 +49,8 @@ async def run(
     return {
         "draft_answer": draft,
         "citations": citations,
-        "execution_trace": state.execution_trace + [
+        "execution_trace": state.execution_trace
+        + [
             TraceEntry(
                 node="answer_generation",
                 duration_ms=elapsed_ms,

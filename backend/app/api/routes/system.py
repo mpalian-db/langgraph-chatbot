@@ -1,4 +1,5 @@
 """System endpoints -- health check and configuration."""
+
 from __future__ import annotations
 
 from typing import Any

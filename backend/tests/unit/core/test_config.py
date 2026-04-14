@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config.models import AgentsConfig, SystemConfig
 from app.core.config.loader import load_agents_config, load_system_config
+from app.core.config.models import AgentsConfig, SystemConfig
 
 
 def test_system_config_defaults():

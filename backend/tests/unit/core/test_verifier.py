@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.core.config.models import VerifierConfig
 from app.core.graph.nodes.verifier import _parse_verifier_response, run
@@ -35,7 +36,10 @@ def test_parse_verifier_response_accept():
 
 
 def test_parse_verifier_response_revise():
-    text = "OUTCOME: revise\nSCORE: 0.5\nREASON: Some claims unsupported.\nUNSUPPORTED: claim A, claim B"
+    text = (
+        "OUTCOME: revise\nSCORE: 0.5\nREASON: Some claims unsupported."
+        "\nUNSUPPORTED: claim A, claim B"
+    )
     result = _parse_verifier_response(text)
     assert result.outcome == "revise"
     assert result.unsupported_claims == ["claim A", "claim B"]
@@ -66,12 +70,14 @@ async def test_verifier_refuses_below_score_threshold():
 
 @pytest.mark.asyncio
 async def test_verifier_accepts_when_llm_says_accept(rag_state, mock_llm):
-    mock_llm.complete = AsyncMock(return_value={
-        "text": "OUTCOME: accept\nSCORE: 0.9\nREASON: Well supported.\nUNSUPPORTED: NONE",
-        "tool_use": [],
-        "stop_reason": "end_turn",
-        "usage": {"input_tokens": 50, "output_tokens": 30},
-    })
+    mock_llm.complete = AsyncMock(
+        return_value={
+            "text": "OUTCOME: accept\nSCORE: 0.9\nREASON: Well supported.\nUNSUPPORTED: NONE",
+            "tool_use": [],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 50, "output_tokens": 30},
+        }
+    )
     config = VerifierConfig(score_threshold=0.5, checks=["score_threshold", "support_analysis"])
 
     result = await run(rag_state, config=config, llm=mock_llm)
@@ -82,12 +88,17 @@ async def test_verifier_accepts_when_llm_says_accept(rag_state, mock_llm):
 
 @pytest.mark.asyncio
 async def test_verifier_increments_retry_on_revise(rag_state, mock_llm):
-    mock_llm.complete = AsyncMock(return_value={
-        "text": "OUTCOME: revise\nSCORE: 0.6\nREASON: Missing citation.\nUNSUPPORTED: LangGraph is stateful",
-        "tool_use": [],
-        "stop_reason": "end_turn",
-        "usage": {"input_tokens": 50, "output_tokens": 30},
-    })
+    mock_llm.complete = AsyncMock(
+        return_value={
+            "text": (
+                "OUTCOME: revise\nSCORE: 0.6\nREASON: Missing citation."
+                "\nUNSUPPORTED: LangGraph is stateful"
+            ),
+            "tool_use": [],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 50, "output_tokens": 30},
+        }
+    )
     config = VerifierConfig(score_threshold=0.5, checks=["support_analysis"], max_retries=2)
 
     result = await run(rag_state, config=config, llm=mock_llm)
@@ -99,12 +110,16 @@ async def test_verifier_increments_retry_on_revise(rag_state, mock_llm):
 
 @pytest.mark.asyncio
 async def test_verifier_refuses_when_retries_exhausted(rag_state, mock_llm):
-    mock_llm.complete = AsyncMock(return_value={
-        "text": "OUTCOME: revise\nSCORE: 0.6\nREASON: Still unsupported.\nUNSUPPORTED: some claim",
-        "tool_use": [],
-        "stop_reason": "end_turn",
-        "usage": {"input_tokens": 50, "output_tokens": 30},
-    })
+    mock_llm.complete = AsyncMock(
+        return_value={
+            "text": (
+                "OUTCOME: revise\nSCORE: 0.6\nREASON: Still unsupported.\nUNSUPPORTED: some claim"
+            ),
+            "tool_use": [],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 50, "output_tokens": 30},
+        }
+    )
     rag_state.retry_count = 2  # already at max
     config = VerifierConfig(score_threshold=0.5, checks=["support_analysis"], max_retries=2)
 

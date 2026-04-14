@@ -4,6 +4,7 @@ Each provider resolves to an adapter instance driven by config/config.toml
 and config/agents.toml.  All ports are satisfied here so that route handlers
 never construct adapters directly.
 """
+
 from __future__ import annotations
 
 import pathlib

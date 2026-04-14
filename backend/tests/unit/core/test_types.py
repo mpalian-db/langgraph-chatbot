@@ -1,5 +1,5 @@
-from app.core.models.types import Chunk, Citation, ToolCall, TraceEntry, VerifierResult
 from app.core.graph.state import GraphState
+from app.core.models.types import Chunk, ToolCall, VerifierResult
 
 
 def test_chunk_defaults():

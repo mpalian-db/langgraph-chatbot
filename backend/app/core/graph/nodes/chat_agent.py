@@ -27,7 +27,10 @@ async def run(
     elapsed_ms = (time.monotonic() - start) * 1000
     return {
         "final_answer": response["text"],
-        "execution_trace": state.execution_trace + [
-            TraceEntry(node="chat_agent", duration_ms=elapsed_ms, data={"tokens": response["usage"]})
+        "execution_trace": state.execution_trace
+        + [
+            TraceEntry(
+                node="chat_agent", duration_ms=elapsed_ms, data={"tokens": response["usage"]}
+            )
         ],
     }
