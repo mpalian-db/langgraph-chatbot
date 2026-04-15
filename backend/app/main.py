@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 
     # Ensure required Qdrant collections exist (idempotent).
     try:
-        collection_port = get_collection_port()
+        collection_port = get_collection_port(system_config=config)
         existing = await collection_port.list_collections()
         for name in ("langgraph-docs", config.webhooks.edgenotes_collection):
             if name not in existing:
