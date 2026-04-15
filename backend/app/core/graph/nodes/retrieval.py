@@ -5,7 +5,7 @@ from typing import Any
 
 from app.core.config.models import RetrievalConfig
 from app.core.graph.state import GraphState
-from app.core.models.types import TraceEntry
+from app.core.models.types import Chunk, TraceEntry
 from app.ports.embedding import EmbeddingPort
 from app.ports.vectorstore import VectorStorePort
 
@@ -34,6 +34,9 @@ async def run(
         score_threshold=config.score_threshold,
     )
 
+    if config.rerank:
+        chunks = _rerank_by_score(chunks)
+
     elapsed_ms = (time.monotonic() - start) * 1000
     return {
         "retrieved_chunks": chunks,
@@ -47,3 +50,8 @@ async def run(
             )
         ],
     }
+
+
+def _rerank_by_score(chunks: list[Chunk]) -> list[Chunk]:
+    """Sort chunks in descending order of similarity score."""
+    return sorted(chunks, key=lambda c: c.score, reverse=True)
