@@ -20,7 +20,10 @@ async def run(
     start = time.monotonic()
 
     query_text = state.retrieval_query or state.query
-    [query_vector] = await embedding.embed([query_text])
+    vectors = await embedding.embed([query_text])
+    if not vectors:
+        raise RuntimeError(f"Embedding adapter returned no vectors for query: {query_text!r}")
+    query_vector = vectors[0]
 
     collection = state.collection or config.default_collection
     chunks = await vectorstore.search(

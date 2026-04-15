@@ -127,3 +127,21 @@ async def test_verifier_refuses_when_retries_exhausted(rag_state, mock_llm):
 
     assert "final_answer" in result
     assert "cannot" in result["final_answer"].lower()
+
+
+@pytest.mark.asyncio
+async def test_verifier_refuses_when_no_chunks_retrieved():
+    empty_state = GraphState(
+        query="What is X?",
+        retrieved_chunks=[],
+        retrieval_scores=[],
+        draft_answer=None,
+    )
+    config = VerifierConfig(score_threshold=0.5, checks=["score_threshold", "support_analysis"])
+    mock_llm = AsyncMock()
+
+    result = await run(empty_state, config=config, llm=mock_llm)
+
+    assert result["verifier_result"].outcome == "refuse"
+    assert "final_answer" in result
+    mock_llm.complete.assert_not_called()

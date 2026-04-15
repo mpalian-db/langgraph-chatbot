@@ -18,6 +18,15 @@ async def run(
 ) -> dict[str, Any]:
     start = time.monotonic()
 
+    # Check 0: no evidence retrieved at all -- refuse immediately.
+    if not state.retrieved_chunks:
+        result = VerifierResult(
+            outcome="refuse",
+            score=0.0,
+            reason="No evidence retrieved from the knowledge base",
+        )
+        return _build_return(state, result, start, refuse=True)
+
     # Check 1: retrieval score threshold
     if "score_threshold" in config.checks and state.retrieval_scores:
         max_score = max(state.retrieval_scores)
