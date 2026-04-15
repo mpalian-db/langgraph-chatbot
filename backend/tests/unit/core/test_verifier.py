@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.config.models import VerifierConfig
-from app.core.graph.nodes.verifier import _parse_verifier_response, run
+from app.core.graph.nodes.verifier import _citation_coverage, _parse_verifier_response, run
 from app.core.graph.state import GraphState
 from app.core.models.types import Chunk
 
@@ -48,6 +48,131 @@ def test_parse_verifier_response_revise():
 def test_parse_verifier_response_garbage_defaults_to_refuse():
     result = _parse_verifier_response("garbled output with no structure")
     assert result.outcome == "refuse"
+
+
+# ---------------------------------------------------------------------------
+# _citation_coverage unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_citation_coverage_all_cited():
+    text = (
+        "LangGraph is a stateful agent framework [chunk-1]."
+        " It supports conditional edges [chunk-2]."
+    )
+    assert _citation_coverage(text) == pytest.approx(1.0)
+
+
+def test_citation_coverage_none_cited():
+    text = "LangGraph is a stateful agent framework. It supports conditional edges and loops."
+    assert _citation_coverage(text) == pytest.approx(0.0)
+
+
+def test_citation_coverage_partial():
+    # Three non-trivial sentences, one cited -> 1/3
+    text = (
+        "LangGraph is a stateful agent library [abc-1]. "
+        "It was created to solve complex workflows. "
+        "It supports both sync and async execution."
+    )
+    assert _citation_coverage(text) == pytest.approx(1 / 3)
+
+
+def test_citation_coverage_empty_or_trivial_sentences_returns_one():
+    # Short fragments under 5 words should not count as non-trivial.
+    assert _citation_coverage("") == pytest.approx(1.0)
+    assert _citation_coverage("OK. Yes. No.") == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# citation_coverage check integration tests (via run())
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_verifier_revises_when_citation_coverage_low(mock_llm):
+    # draft_answer has two non-trivial sentences, neither cited -> coverage = 0.0
+    state = GraphState(
+        query="What is LangGraph?",
+        retrieved_chunks=[
+            Chunk(id="c1", text="LangGraph is a library.", collection="docs", score=0.9)
+        ],
+        retrieval_scores=[0.9],
+        draft_answer=(
+            "LangGraph is a library for building stateful agents. "
+            "It supports conditional edges and loops."
+        ),
+    )
+    config = VerifierConfig(
+        score_threshold=0.5,
+        citation_coverage_min=0.8,
+        checks=["citation_coverage"],
+        max_retries=2,
+    )
+
+    result = await run(state, config=config, llm=mock_llm)
+
+    assert result["verifier_result"].outcome == "revise"
+    assert result["retry_count"] == 1
+    assert "final_answer" not in result
+    mock_llm.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verifier_refuses_when_coverage_low_and_retries_exhausted(mock_llm):
+    state = GraphState(
+        query="What is LangGraph?",
+        retrieved_chunks=[
+            Chunk(id="c1", text="LangGraph is a library.", collection="docs", score=0.9)
+        ],
+        retrieval_scores=[0.9],
+        draft_answer=(
+            "LangGraph is a library for building stateful agents. "
+            "It supports conditional edges and loops."
+        ),
+        retry_count=2,
+    )
+    config = VerifierConfig(
+        score_threshold=0.5,
+        citation_coverage_min=0.8,
+        checks=["citation_coverage"],
+        max_retries=2,
+    )
+
+    result = await run(state, config=config, llm=mock_llm)
+
+    assert result["verifier_result"].outcome == "revise"
+    assert "final_answer" in result
+    assert "cannot" in result["final_answer"].lower()
+    mock_llm.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verifier_skips_coverage_check_when_not_in_checks(rag_state, mock_llm):
+    # rag_state.draft_answer has one cited sentence -- coverage = 1.0 anyway,
+    # but we confirm the check is skipped entirely by omitting it from checks.
+    mock_llm.complete = AsyncMock(
+        return_value={
+            "text": "OUTCOME: accept\nSCORE: 0.9\nREASON: Well supported.\nUNSUPPORTED: NONE",
+            "tool_use": [],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 50, "output_tokens": 30},
+        }
+    )
+    config = VerifierConfig(
+        score_threshold=0.5,
+        checks=["support_analysis"],  # citation_coverage deliberately absent
+    )
+
+    result = await run(rag_state, config=config, llm=mock_llm)
+
+    assert result["verifier_result"].outcome == "accept"
+    mock_llm.complete.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Existing tests (unchanged)
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio

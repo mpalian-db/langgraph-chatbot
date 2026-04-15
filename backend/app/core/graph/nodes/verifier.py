@@ -9,6 +9,9 @@ from app.core.graph.state import GraphState
 from app.core.models.types import TraceEntry, VerifierResult
 from app.ports.llm import LLMPort
 
+# Matches inline citations of the form [chunk-id] or [abc-123].
+_CITATION_RE = re.compile(r"\[\w[\w-]*\]")
+
 
 async def run(
     state: GraphState,
@@ -40,7 +43,24 @@ async def run(
             )
             return _build_return(state, result, start, refuse=True)
 
-    # Check 2: LLM-based support analysis
+    # Check 2: citation coverage (deterministic, no LLM call)
+    if "citation_coverage" in config.checks and state.draft_answer:
+        coverage = _citation_coverage(state.draft_answer)
+        if coverage < config.citation_coverage_min:
+            result = VerifierResult(
+                outcome="revise",
+                score=coverage,
+                reason=(
+                    f"Citation coverage {coverage:.0%} is below the required "
+                    f"{config.citation_coverage_min:.0%}"
+                ),
+            )
+            if state.retry_count < config.max_retries:
+                return _build_return(state, result, start, revise=True)
+            else:
+                return _build_return(state, result, start, refuse=True)
+
+    # Check 3: LLM-based support analysis
     if "support_analysis" in config.checks:
         evidence = "\n\n".join(f"[{c.id}] {c.text}" for c in state.retrieved_chunks)
         prompt = (
@@ -98,6 +118,20 @@ def _build_return(
     elif refuse:
         update["final_answer"] = f"I cannot provide a fully supported answer. {result.reason}"
     return update
+
+
+def _citation_coverage(text: str) -> float:
+    """Return the fraction of non-trivial sentences that contain at least one citation.
+
+    A sentence is non-trivial when it contains five or more words.  If there are
+    no non-trivial sentences the answer is considered fully covered (1.0).
+    """
+    sentences = [s.strip() for s in re.split(r"[.\n]", text) if s.strip()]
+    non_trivial = [s for s in sentences if len(s.split()) >= 5]
+    if not non_trivial:
+        return 1.0
+    cited = sum(1 for s in non_trivial if _CITATION_RE.search(s))
+    return cited / len(non_trivial)
 
 
 def _parse_verifier_response(text: str) -> VerifierResult:
