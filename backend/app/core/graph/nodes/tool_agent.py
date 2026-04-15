@@ -100,4 +100,13 @@ async def _execute_tool(
             collection=args["collection"],
         )
         return [{"id": c.id, "text": c.text[:200], "score": c.score} for c in chunks]
+    if name == "rebuild_index":
+        coll = args["collection"]
+        vector_size = args.get("vector_size", 768)
+        try:
+            await collection_store.delete_collection(coll)
+        except Exception:
+            pass  # Collection may not exist -- proceed to create.
+        await collection_store.create(coll, vector_size)
+        return {"collection": coll, "status": "rebuilt"}
     return f"Unknown tool: {name}"

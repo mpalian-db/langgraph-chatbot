@@ -72,3 +72,26 @@ async def delete_collection(
         await collection_store.delete_collection(name)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{name}/rebuild", status_code=200)
+async def rebuild_collection(
+    name: str,
+    collection_store: CollectionDep,
+    vector_size: int = 768,
+) -> dict[str, str]:
+    """Delete and recreate a collection, discarding all existing vectors.
+
+    The vector dimensionality defaults to 768 (nomic-embed-text).  Pass
+    ``vector_size`` as a query parameter to override.
+    """
+    try:
+        await collection_store.delete_collection(name)
+    except Exception:
+        # Collection may not exist yet -- proceed to create.
+        pass
+    try:
+        await collection_store.create(name, vector_size)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"name": name, "status": "rebuilt"}
