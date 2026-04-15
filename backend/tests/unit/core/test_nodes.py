@@ -90,6 +90,46 @@ async def test_retrieval_searches_vectorstore(mock_vectorstore, mock_embedding):
 
 
 @pytest.mark.asyncio
+async def test_retrieval_reranks_by_score_descending(mock_embedding):
+    # Return chunks in ascending score order; after rerank they should be descending.
+    from unittest.mock import AsyncMock as _AM
+
+    low = Chunk(id="low", text="less relevant content here", collection="docs", score=0.5)
+    high = Chunk(id="high", text="more relevant content here", collection="docs", score=0.9)
+
+    vs = _AM()
+    vs.search = _AM(return_value=[low, high])  # low score first, as if vectorstore returned them
+
+    state = GraphState(query="What is LangGraph?", route="rag")
+    config = RetrievalConfig(top_k=5, score_threshold=0.4, rerank=True)
+
+    result = await retrieval.run(state, config=config, vectorstore=vs, embedding=mock_embedding)
+
+    assert result["retrieved_chunks"][0].id == "high"
+    assert result["retrieved_chunks"][1].id == "low"
+
+
+@pytest.mark.asyncio
+async def test_retrieval_skips_rerank_when_disabled(mock_embedding):
+    from unittest.mock import AsyncMock as _AM
+
+    low = Chunk(id="low", text="less relevant content here", collection="docs", score=0.5)
+    high = Chunk(id="high", text="more relevant content here", collection="docs", score=0.9)
+
+    vs = _AM()
+    vs.search = _AM(return_value=[low, high])
+
+    state = GraphState(query="What is LangGraph?", route="rag")
+    config = RetrievalConfig(top_k=5, score_threshold=0.4, rerank=False)
+
+    result = await retrieval.run(state, config=config, vectorstore=vs, embedding=mock_embedding)
+
+    # Original order preserved when rerank=False.
+    assert result["retrieved_chunks"][0].id == "low"
+    assert result["retrieved_chunks"][1].id == "high"
+
+
+@pytest.mark.asyncio
 async def test_answer_generation_produces_draft(mock_llm):
     mock_llm.complete = AsyncMock(
         return_value={
