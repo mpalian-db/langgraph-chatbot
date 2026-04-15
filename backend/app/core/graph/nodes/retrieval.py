@@ -22,7 +22,7 @@ async def run(
     query_text = state.retrieval_query or state.query
     [query_vector] = await embedding.embed([query_text])
 
-    collection = config.default_collection
+    collection = state.collection or config.default_collection
     chunks = await vectorstore.search(
         query_vector=query_vector,
         top_k=config.top_k,

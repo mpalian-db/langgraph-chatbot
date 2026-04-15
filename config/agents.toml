@@ -20,7 +20,7 @@ max_tokens = 2048
 [retrieval]
 enabled = true
 top_k = 10
-score_threshold = 0.7
+score_threshold = 0.5
 rerank = true
 default_collection = "langgraph-docs"
 
@@ -42,7 +42,7 @@ max_tokens = 2048
 enabled = true
 model = "llama3.1:8b"
 # Anthropic alternative: model = "claude-sonnet-4-6-20250514"
-score_threshold = 0.75
+score_threshold = 0.55
 citation_coverage_min = 0.8
 max_retries = 2
 checks = ["score_threshold", "support_analysis", "citation_coverage"]

@@ -108,9 +108,7 @@ async def chat_endpoint(
         embedding=embedding,
     )
 
-    initial_state = GraphState(query=body.query)
-    if body.collection:
-        initial_state.metadata_filters["collection"] = body.collection
+    initial_state = GraphState(query=body.query, collection=body.collection)
 
     result = await graph.ainvoke(initial_state)
     elapsed = time.monotonic() - start
@@ -145,9 +143,7 @@ async def chat_stream_endpoint(
         embedding=embedding,
     )
 
-    initial_state = GraphState(query=body.query)
-    if body.collection:
-        initial_state.metadata_filters["collection"] = body.collection
+    initial_state = GraphState(query=body.query, collection=body.collection)
 
     async def event_generator():
         final_state = None

@@ -27,15 +27,15 @@ class QdrantVectorStoreAdapter:
         score_threshold: float = 0.0,
     ) -> list[Chunk]:
         qdrant_filter = _build_filter(filters) if filters else None
-        results = await self._client.search(  # type: ignore[attr-defined]
+        response = await self._client.query_points(
             collection_name=collection,
-            query_vector=query_vector,
+            query=query_vector,
             limit=top_k,
             score_threshold=score_threshold,
             query_filter=qdrant_filter,
             with_payload=True,
         )
-        return [_scored_point_to_chunk(r, collection) for r in results]
+        return [_scored_point_to_chunk(r, collection) for r in response.points]
 
     async def upsert(
         self,

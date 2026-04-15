@@ -9,6 +9,7 @@ from app.core.models.types import Chunk, Citation, ToolCall, TraceEntry, Verifie
 class GraphState:
     query: str
     route: str | None = None
+    collection: str | None = None
     retrieval_query: str | None = None
     retrieved_chunks: list[Chunk] = field(default_factory=list)
     retrieval_scores: list[float] = field(default_factory=list)
