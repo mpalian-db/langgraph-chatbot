@@ -27,3 +27,7 @@ ollama_base_url = "http://localhost:11434"
 chunk_size = 512
 chunk_overlap = 64
 supported_formats = ["md", "txt", "pdf"]
+
+[webhooks]
+edgenotes_secret = ""              # set to match LANGGRAPH_WEBHOOK_SECRET in EdgeNotes
+edgenotes_collection = "edgenotes" # Qdrant collection for note chunks

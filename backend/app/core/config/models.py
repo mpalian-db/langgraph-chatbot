@@ -46,6 +46,11 @@ class IngestionConfig(_StrictModel):
     supported_formats: list[str] = ["md", "txt", "pdf"]
 
 
+class WebhooksConfig(_StrictModel):
+    edgenotes_secret: str = ""
+    edgenotes_collection: str = "edgenotes"
+
+
 class SystemConfig(_StrictModel):
     environment: EnvironmentConfig = EnvironmentConfig()
     llm: LLMConfig = LLMConfig()
@@ -53,6 +58,7 @@ class SystemConfig(_StrictModel):
     vectorstore: VectorStoreConfig = VectorStoreConfig()
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
     ingestion: IngestionConfig = IngestionConfig()
+    webhooks: WebhooksConfig = WebhooksConfig()
 
 
 class RouterConfig(_StrictModel):

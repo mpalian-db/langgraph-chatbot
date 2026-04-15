@@ -9,7 +9,8 @@ dev:
 
 # Start full stack including n8n
 dev-full:
-    docker compose up qdrant langfuse-db langfuse-server n8n -d
+    docker compose up qdrant langfuse-db langfuse-server -d
+    just n8n-up
     cd backend && uv run uvicorn app.main:app --reload --port 8000 &
     cd frontend && npm run dev
 
@@ -54,27 +55,31 @@ langfuse-open:
 
 # ─── n8n ──────────────────────────────────────────────────────────────────────
 
-# Start the n8n container (UI at http://localhost:5678)
+# Start n8n as a standalone container (UI at http://localhost:5678)
 n8n-up:
-    docker compose up n8n -d
+    docker run -d --rm \
+      --name n8n \
+      -p 5678:5678 \
+      -e GENERIC_TIMEZONE="Europe/Warsaw" \
+      -e TZ="Europe/Warsaw" \
+      -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+      -e N8N_RUNNERS_ENABLED=true \
+      -e N8N_SECURE_COOKIE=false \
+      -v n8n_data:/home/node/.n8n \
+      docker.n8n.io/n8nio/n8n
     @echo "n8n UI: http://localhost:5678"
 
 # Stop the n8n container
 n8n-down:
-    docker compose stop n8n
+    docker stop n8n
 
 # Tail n8n logs
 n8n-logs:
-    docker compose logs n8n -f
+    docker logs n8n -f
 
 # Open n8n UI in the browser
 n8n-open:
     open http://localhost:5678
-
-# Export all n8n workflows to n8n/workflows/ as JSON
-n8n-export:
-    docker compose exec n8n n8n export:workflow --all --output=/home/node/workflows/
-    @echo "Workflows exported to n8n/workflows/"
 
 # ─── Tailscale ────────────────────────────────────────────────────────────────
 

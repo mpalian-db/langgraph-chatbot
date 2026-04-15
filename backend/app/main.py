@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.dependencies import get_system_config
-from app.api.routes import chat, collections, documents, system
+from app.api.dependencies import get_collection_port, get_system_config
+from app.api.routes import chat, collections, documents, system, webhooks
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,17 @@ async def lifespan(app: FastAPI):
             app.state.langfuse = None
     else:
         app.state.langfuse = None
+
+    # Ensure required Qdrant collections exist (idempotent).
+    try:
+        collection_port = get_collection_port()
+        existing = await collection_port.list_collections()
+        for name in ("langgraph-docs", config.webhooks.edgenotes_collection):
+            if name not in existing:
+                await collection_port.create(name, vector_size=768)
+                logger.info("Created Qdrant collection: %s", name)
+    except Exception:
+        logger.warning("Could not ensure Qdrant collections -- is Qdrant running?", exc_info=True)
 
     yield
 
@@ -70,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(collections.router, prefix="/api")
     app.include_router(documents.router, prefix="/api")
     app.include_router(system.router, prefix="/api")
+    app.include_router(webhooks.router, prefix="/api")
 
     return app
 
