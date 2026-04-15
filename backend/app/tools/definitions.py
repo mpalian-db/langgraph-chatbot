@@ -34,6 +34,25 @@ TOOL_REGISTRY: dict[str, dict] = {
             "required": ["collection"],
         },
     },
+    "rebuild_index": {
+        "name": "rebuild_index",
+        "description": (
+            "Delete and recreate a collection, discarding all existing vectors. "
+            "Use when re-ingestion is required after a schema or embedding change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "collection": {"type": "string", "description": "Collection name to rebuild"},
+                "vector_size": {
+                    "type": "integer",
+                    "description": "Vector dimensionality (default 768 for nomic-embed-text)",
+                    "default": 768,
+                },
+            },
+            "required": ["collection"],
+        },
+    },
 }
 
 

@@ -57,5 +57,6 @@ allowed_tools = [
     "get_collection_stats",
     "upload_document",
     "delete_document",
+    "rebuild_index",
 ]
 max_tool_calls = 5
