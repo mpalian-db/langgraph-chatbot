@@ -13,7 +13,8 @@ import {
 } from "react";
 import { useChat } from "../hooks/useChat";
 import { listCollections } from "../api/client";
-import type { CitationOut, Message, TraceEntryOut } from "../api/types";
+import TraceView from "./TraceView";
+import type { CitationOut, Message } from "../api/types";
 
 // ---------------------------------------------------------------------------
 // Route badge colour mapping
@@ -77,39 +78,6 @@ function Citations({ items }: { items: CitationOut[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Trace details
-// ---------------------------------------------------------------------------
-
-function Trace({ entries }: { entries: TraceEntryOut[] }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (entries.length === 0) return null;
-
-  return (
-    <div className="mt-1">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="text-xs font-medium text-gray-500 hover:text-gray-400"
-      >
-        {expanded ? "Hide" : "Show"} trace ({entries.length} node
-        {entries.length !== 1 && "s"})
-      </button>
-      {expanded && (
-        <ul className="mt-1 space-y-1 text-xs text-gray-500">
-          {entries.map((t, i) => (
-            <li key={`${t.node}-${i}`}>
-              <span className="font-medium text-gray-400">{t.node}</span>{" "}
-              <span>{t.duration_ms.toFixed(0)}ms</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Single message bubble
 // ---------------------------------------------------------------------------
 
@@ -138,7 +106,7 @@ function MessageBubble({ msg }: { msg: Message }) {
         {!isUser && msg.citations && (
           <Citations items={msg.citations} />
         )}
-        {!isUser && msg.trace && <Trace entries={msg.trace} />}
+        {!isUser && msg.trace && <TraceView entries={msg.trace} />}
       </div>
     </div>
   );
