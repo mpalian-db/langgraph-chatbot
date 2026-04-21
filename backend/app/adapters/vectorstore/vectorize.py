@@ -23,7 +23,13 @@ _VECTORIZE_BASE = (
 
 
 class VectorizeAdapter:
-    """Cloudflare Vectorize implementation of VectorStorePort + CollectionPort."""
+    """Cloudflare Vectorize implementation of VectorStorePort + CollectionPort.
+
+    Vectorize has no native sub-collection concept. Logical collections are
+    implemented via a `collection` metadata field on each vector. Because
+    Vectorize cannot enumerate distinct metadata values, the set of known
+    collections must be supplied at construction time via `known_collections`.
+    """
 
     def __init__(
         self,
@@ -31,9 +37,11 @@ class VectorizeAdapter:
         api_token: str,
         index_name: str,
         *,
+        known_collections: list[str] | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._base = _VECTORIZE_BASE.format(account_id=account_id, index_name=index_name)
+        self._known_collections: list[str] = known_collections or []
         headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
@@ -135,10 +143,9 @@ class VectorizeAdapter:
         )
 
     async def list_collections(self) -> list[str]:
-        # Query distinct collection metadata values -- not natively supported;
-        # return a static list from config would require additional wiring.
-        # Return empty for now; the app startup check tolerates this.
-        return []
+        # Vectorize cannot enumerate distinct metadata values natively.
+        # Return the list supplied at construction time (from config).
+        return list(self._known_collections)
 
     async def delete_collection(self, name: str) -> None:
         logger.info(

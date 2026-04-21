@@ -16,6 +16,7 @@ provider = "qdrant"                   # "qdrant" (default) or "vectorize" (Cloud
 qdrant_url = "http://localhost:6333"
 # vectorize settings (uncomment for Cloudflare deployment):
 # vectorize_index_name = "langgraph-chatbot"
+# known_collections = ["langgraph-docs", "notion-docs", "edgenotes"]
 # CF_ACCOUNT_ID and CF_API_TOKEN must be set as environment variables.
 
 [embeddings]

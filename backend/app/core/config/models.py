@@ -30,6 +30,8 @@ class VectorStoreConfig(_StrictModel):
     qdrant_url: str = "http://localhost:6333"
     # Vectorize settings (for Cloudflare deployment -- credentials via env vars)
     vectorize_index_name: str = "langgraph-chatbot"
+    # Known logical collections for Vectorize (Vectorize cannot enumerate them natively).
+    known_collections: list[str] = ["langgraph-docs", "notion-docs", "edgenotes"]
 
 
 class EmbeddingsConfig(_StrictModel):

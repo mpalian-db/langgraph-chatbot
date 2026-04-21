@@ -82,6 +82,7 @@ def get_vector_store(
             account_id=os.environ["CF_ACCOUNT_ID"],
             api_token=os.environ["CF_API_TOKEN"],
             index_name=system_config.vectorstore.vectorize_index_name,
+            known_collections=system_config.vectorstore.known_collections,
         )
     msg = f"Unknown vector store provider: {provider}"
     raise ValueError(msg)
@@ -104,6 +105,7 @@ def get_collection_port(
             account_id=os.environ["CF_ACCOUNT_ID"],
             api_token=os.environ["CF_API_TOKEN"],
             index_name=system_config.vectorstore.vectorize_index_name,
+            known_collections=system_config.vectorstore.known_collections,
         )
     msg = f"Unknown collection provider: {provider}"
     raise ValueError(msg)
