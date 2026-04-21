@@ -1,5 +1,40 @@
 set dotenv-load := true
 
+# ─── Ollama ───────────────────────────────────────────────────────────────────
+
+OLLAMA_MODELS := "llama3.2:3b llama3.1:8b nomic-embed-text"
+
+# Start the Ollama server (no-op if already running)
+ollama-start:
+    ollama serve &>/dev/null & sleep 2 && echo "Ollama running"
+
+# Check that all required models are pulled; pull any that are missing
+ollama-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    missing=()
+    for model in {{OLLAMA_MODELS}}; do
+        if ollama show "$model" &>/dev/null; then
+            echo "  ok  $model"
+        else
+            echo "  --  $model (missing)"
+            missing+=("$model")
+        fi
+    done
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo ""
+        echo "Pulling ${#missing[@]} missing model(s)..."
+        for model in "${missing[@]}"; do
+            echo "  pulling $model"
+            ollama pull "$model"
+        done
+        echo "All models ready."
+    else
+        echo "All models already pulled."
+    fi
+
+# ─── Dev ──────────────────────────────────────────────────────────────────────
+
 # Start Qdrant + Langfuse + backend + frontend for local dev.
 # Note: requires frontend/ to be scaffolded (see Task 25) before first run.
 dev:
