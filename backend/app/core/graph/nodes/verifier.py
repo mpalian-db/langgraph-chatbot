@@ -126,7 +126,7 @@ def _citation_coverage(text: str) -> float:
     A sentence is non-trivial when it contains five or more words.  If there are
     no non-trivial sentences the answer is considered fully covered (1.0).
     """
-    sentences = [s.strip() for s in re.split(r"[.\n]", text) if s.strip()]
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s|\n", text) if s.strip()]
     non_trivial = [s for s in sentences if len(s.split()) >= 5]
     if not non_trivial:
         return 1.0

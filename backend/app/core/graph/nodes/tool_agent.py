@@ -6,6 +6,7 @@ from typing import Any
 from app.core.config.models import ToolAgentConfig
 from app.core.graph.state import GraphState
 from app.core.models.types import ToolCall, TraceEntry
+from app.core.operations.collections import rebuild_collection
 from app.ports.embedding import EmbeddingPort
 from app.ports.llm import LLMPort
 from app.ports.vectorstore import CollectionPort, VectorStorePort
@@ -103,10 +104,6 @@ async def _execute_tool(
     if name == "rebuild_index":
         coll = args["collection"]
         vector_size = args.get("vector_size", 768)
-        try:
-            await collection_store.delete_collection(coll)
-        except Exception:
-            pass  # Collection may not exist -- proceed to create.
-        await collection_store.create(coll, vector_size)
+        await rebuild_collection(collection_store, coll, vector_size)
         return {"collection": coll, "status": "rebuilt"}
     return f"Unknown tool: {name}"
