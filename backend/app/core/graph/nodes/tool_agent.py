@@ -33,6 +33,7 @@ async def run(
         response = await llm.complete(
             messages=messages,
             model=config.model,
+            system=config.system_prompt,
             tools=tools,
             max_tokens=1024,
         )

@@ -55,6 +55,7 @@ checks = ["score_threshold"]
 enabled = true
 model = "llama3.1:8b"
 # Anthropic alternative: model = "claude-haiku-4-5-20251001"
+system_prompt = """You are a tool-using assistant for a RAG knowledge base system. You have tools to inspect and manage vector collections. Use the available tools to answer the user's request. Always call the appropriate tool first, then report exactly what the tool returned. Never guess or make up results -- only report what the tools actually return."""
 allowed_tools = [
     "search_collection",
     "list_collections",

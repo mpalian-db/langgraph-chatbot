@@ -119,6 +119,11 @@ class VerifierConfig(_StrictModel):
 class ToolAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    system_prompt: str = (
+        "You are a tool-using assistant. Use the available tools to answer the user's request. "
+        "Always call the appropriate tool first, then report what the tool returned. "
+        "Never guess or make up results -- only report what the tools actually return."
+    )
     allowed_tools: list[str] = []
     max_tool_calls: int = 5
 
