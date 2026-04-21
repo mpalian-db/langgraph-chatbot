@@ -26,6 +26,9 @@ qdrant_data/
 n8n_data/
 langfuse_db/
 
+# Cloudflare
+.wrangler/
+
 # Misc
 uploads/
 .python-version
