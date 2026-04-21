@@ -28,7 +28,8 @@ class OllamaLLMAdapter:
         ollama_messages: list[dict[str, Any]] = []
         if system:
             ollama_messages.append({"role": "system", "content": system})
-        ollama_messages.extend(messages)
+        for msg in messages:
+            ollama_messages.extend(_to_ollama_messages(msg))
 
         kwargs: dict[str, Any] = {
             "model": model,
@@ -61,3 +62,39 @@ class OllamaLLMAdapter:
                 "output_tokens": response.eval_count or 0,
             },
         }
+
+
+def _to_ollama_messages(msg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert a provider-neutral message dict to one or more Ollama messages.
+
+    Handles two conversions:
+    - assistant message with _tool_use -> restore tool_calls field Ollama expects
+    - user message with tool_result list content -> one role:tool message per result
+    """
+    role = msg["role"]
+    content = msg.get("content", "")
+
+    if role == "assistant":
+        out: dict[str, Any] = {"role": "assistant", "content": content}
+        tool_use = msg.get("_tool_use")
+        if tool_use:
+            out["tool_calls"] = [
+                {
+                    "function": {
+                        "name": t["name"],
+                        "arguments": t["input"],
+                    }
+                }
+                for t in tool_use
+            ]
+        return [out]
+
+    if role == "user" and isinstance(content, list):
+        # Anthropic-style batched tool results -> separate role:tool messages
+        result = []
+        for block in content:
+            if block.get("type") == "tool_result":
+                result.append({"role": "tool", "content": str(block.get("content", ""))})
+        return result if result else [{"role": "user", "content": ""}]
+
+    return [{"role": role, "content": content}]

@@ -21,9 +21,14 @@ class AnthropicLLMAdapter:
         max_tokens: int = 1024,
     ) -> dict[str, Any]:
         """Complete a prompt and return a structured response."""
+        # Strip private keys (e.g. _tool_use) used for cross-provider message routing.
+        clean_messages = [
+            {k: v for k, v in m.items() if not k.startswith("_")}
+            for m in messages
+        ]
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": clean_messages,
             "max_tokens": max_tokens,
         }
         if system:
