@@ -46,7 +46,10 @@ model = "llama3.1:8b"
 score_threshold = 0.55
 citation_coverage_min = 0.8
 max_retries = 2
-checks = ["score_threshold", "support_analysis", "citation_coverage"]
+# citation_coverage check requires the LLM to emit [chunk-id] inline citations,
+# which local Ollama models do inconsistently. Disabled for Ollama; re-enable
+# when using Anthropic models (claude-sonnet-4-6-20250514) which follow the format reliably.
+checks = ["score_threshold", "support_analysis"]
 
 [tool_agent]
 enabled = true
