@@ -16,6 +16,7 @@ from app.api.dependencies import (
     EmbeddingDep,
     LLMDep,
     VectorStoreDep,
+    WorklogDep,
 )
 from app.core.graph.graph import build_graph
 from app.core.graph.state import GraphState
@@ -96,6 +97,7 @@ async def chat_endpoint(
     vectorstore: VectorStoreDep,
     collection_store: CollectionDep,
     embedding: EmbeddingDep,
+    worklog: WorklogDep,
 ) -> ChatResponse:
     """Run the full graph synchronously and return the result."""
     start = time.monotonic()
@@ -106,6 +108,7 @@ async def chat_endpoint(
         vectorstore=vectorstore,
         collection_store=collection_store,
         embedding=embedding,
+        worklog=worklog,
     )
 
     initial_state = GraphState(query=body.query, collection=body.collection)
@@ -131,6 +134,7 @@ async def chat_stream_endpoint(
     vectorstore: VectorStoreDep,
     collection_store: CollectionDep,
     embedding: EmbeddingDep,
+    worklog: WorklogDep,
 ) -> StreamingResponse:
     """Stream graph execution events as newline-delimited JSON (NDJSON)."""
     import json
@@ -141,6 +145,7 @@ async def chat_stream_endpoint(
         vectorstore=vectorstore,
         collection_store=collection_store,
         embedding=embedding,
+        worklog=worklog,
     )
 
     initial_state = GraphState(query=body.query, collection=body.collection)

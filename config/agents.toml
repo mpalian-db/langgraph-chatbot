@@ -6,9 +6,10 @@ prompt = """You are a routing agent. Given the user's message, classify it into 
 - "chat": general conversation, greetings, meta questions about the system
 - "rag": questions that likely require searching indexed knowledge
 - "tool": requests to inspect collections, upload documents, or run system operations
+- "worklog": questions about worklogs, logged hours, time tracking, or worklog plans
 
-Respond with ONLY the route name: chat, rag, or tool."""
-routes = ["chat", "rag", "tool"]
+Respond with ONLY the route name: chat, rag, tool, or worklog."""
+routes = ["chat", "rag", "tool", "worklog"]
 
 [chat_agent]
 enabled = true
@@ -58,3 +59,13 @@ allowed_tools = [
     "rebuild_index",
 ]
 max_tool_calls = 5
+
+[worklog_agent]
+enabled = true
+model = "llama3.2:3b"
+# Anthropic alternative: model = "claude-haiku-4-5-20251001"
+system_prompt = """You are a worklog assistant. You help the user understand their logged hours and worklog plans.
+You can list existing plans, show plan details, and generate new plans.
+You CANNOT apply plans or modify Jira/Tempo data -- only read and generate.
+Present information clearly and concisely."""
+max_tokens = 2048
