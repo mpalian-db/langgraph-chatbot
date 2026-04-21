@@ -25,6 +25,7 @@ from app.ports.llm import LLMPort
 from app.ports.notion import NotionPort
 from app.ports.storage import DocumentStoragePort
 from app.ports.vectorstore import CollectionPort, VectorStorePort
+from app.ports.worklog import WorklogPort
 
 # ---------------------------------------------------------------------------
 # Project root resolution
@@ -125,6 +126,19 @@ def get_notion() -> NotionPort:
     return NotionAdapter(token=token)
 
 
+def get_worklog() -> WorklogPort | None:
+    import os
+
+    worker_url = os.environ.get("WORKLOG_WORKER_URL", "")
+    api_key = os.environ.get("WORKLOG_API_KEY", "")
+    if not worker_url:
+        return None
+
+    from app.adapters.worklog.http import WorklogHTTPAdapter
+
+    return WorklogHTTPAdapter(base_url=worker_url, api_key=api_key)
+
+
 # ---------------------------------------------------------------------------
 # Typed dependency aliases for route signatures
 # ---------------------------------------------------------------------------
@@ -137,3 +151,4 @@ CollectionDep = Annotated[CollectionPort, Depends(get_collection_port)]
 EmbeddingDep = Annotated[EmbeddingPort, Depends(get_embedding)]
 StorageDep = Annotated[DocumentStoragePort, Depends(get_storage)]
 NotionDep = Annotated[NotionPort, Depends(get_notion)]
+WorklogDep = Annotated[WorklogPort | None, Depends(get_worklog)]

@@ -13,11 +13,13 @@ from app.core.graph.nodes import (
     router,
     tool_agent,
     verifier,
+    worklog_agent,
 )
 from app.core.graph.state import GraphState
 from app.ports.embedding import EmbeddingPort
 from app.ports.llm import LLMPort
 from app.ports.vectorstore import CollectionPort, VectorStorePort
+from app.ports.worklog import WorklogPort
 
 
 def build_graph(
@@ -26,6 +28,7 @@ def build_graph(
     vectorstore: VectorStorePort,
     collection_store: CollectionPort,
     embedding: EmbeddingPort,
+    worklog: WorklogPort | None = None,
 ):
     builder = StateGraph(GraphState)
 
@@ -66,15 +69,36 @@ def build_graph(
         ),
     )
 
+    if worklog is not None:
+        builder.add_node(
+            "worklog_agent",
+            partial(
+                worklog_agent.run,
+                config=agents_config.worklog_agent,
+                llm=llm,
+                worklog=worklog,
+            ),
+        )
+
     builder.set_entry_point("router")
+
+    route_map: dict[str, str] = {
+        "chat": "chat_agent",
+        "rag": "retrieval",
+        "tool": "tool_agent",
+    }
+    if worklog is not None:
+        route_map["worklog"] = "worklog_agent"
 
     builder.add_conditional_edges(
         "router",
         lambda state: state.route or "chat",
-        {"chat": "chat_agent", "rag": "retrieval", "tool": "tool_agent"},
+        route_map,
     )
     builder.add_edge("chat_agent", END)
     builder.add_edge("tool_agent", END)
+    if worklog is not None:
+        builder.add_edge("worklog_agent", END)
     builder.add_edge("retrieval", "answer_generation")
     builder.add_edge("answer_generation", "verifier")
     builder.add_conditional_edges(

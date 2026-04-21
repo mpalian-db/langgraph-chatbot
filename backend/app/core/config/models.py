@@ -50,6 +50,10 @@ class NotionConfig(_StrictModel):
     default_collection: str = "notion-docs"
 
 
+class WorklogConfig(_StrictModel):
+    pass
+
+
 class WebhooksConfig(_StrictModel):
     edgenotes_secret: str = ""
     edgenotes_collection: str = "edgenotes"
@@ -63,6 +67,7 @@ class SystemConfig(_StrictModel):
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
     ingestion: IngestionConfig = IngestionConfig()
     notion: NotionConfig = NotionConfig()
+    worklog: WorklogConfig = WorklogConfig()
     webhooks: WebhooksConfig = WebhooksConfig()
 
 
@@ -114,6 +119,18 @@ class ToolAgentConfig(_StrictModel):
     max_tool_calls: int = 5
 
 
+class WorklogAgentConfig(_StrictModel):
+    enabled: bool = True
+    model: str = "llama3.2:3b"
+    system_prompt: str = (
+        "You are a worklog assistant. You help the user understand their logged hours "
+        "and worklog plans. You can list existing plans, show plan details, and generate "
+        "new plans. You CANNOT apply plans or modify Jira/Tempo data -- only read and generate. "
+        "Present information clearly and concisely."
+    )
+    max_tokens: int = 2048
+
+
 class AgentsConfig(_StrictModel):
     router: RouterConfig = RouterConfig()
     chat_agent: ChatAgentConfig = ChatAgentConfig()
@@ -121,3 +138,4 @@ class AgentsConfig(_StrictModel):
     answer_generation: AnswerGenerationConfig = AnswerGenerationConfig()
     verifier: VerifierConfig = VerifierConfig()
     tool_agent: ToolAgentConfig = ToolAgentConfig()
+    worklog_agent: WorklogAgentConfig = WorklogAgentConfig()

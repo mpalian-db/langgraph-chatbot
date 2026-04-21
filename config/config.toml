@@ -28,6 +28,10 @@ chunk_size = 512
 chunk_overlap = 64
 supported_formats = ["md", "txt", "pdf"]
 
+[worklog]
+# Worker URL and API key are read from environment variables
+# WORKLOG_WORKER_URL and WORKLOG_API_KEY at runtime.
+
 [notion]
 default_collection = "notion-docs"
 # Notion API token and database ID are read from environment variables
