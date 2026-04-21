@@ -28,6 +28,11 @@ chunk_size = 512
 chunk_overlap = 64
 supported_formats = ["md", "txt", "pdf"]
 
+[notion]
+default_collection = "notion-docs"
+# Notion API token and database ID are read from environment variables
+# NOTION_TOKEN and NOTION_DATABASE_ID at runtime -- not stored in config.
+
 [webhooks]
 edgenotes_secret = ""              # set to match LANGGRAPH_WEBHOOK_SECRET in EdgeNotes
 edgenotes_collection = "edgenotes" # Qdrant collection for note chunks

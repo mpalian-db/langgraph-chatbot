@@ -46,6 +46,10 @@ class IngestionConfig(_StrictModel):
     supported_formats: list[str] = ["md", "txt", "pdf"]
 
 
+class NotionConfig(_StrictModel):
+    default_collection: str = "notion-docs"
+
+
 class WebhooksConfig(_StrictModel):
     edgenotes_secret: str = ""
     edgenotes_collection: str = "edgenotes"
@@ -58,6 +62,7 @@ class SystemConfig(_StrictModel):
     vectorstore: VectorStoreConfig = VectorStoreConfig()
     embeddings: EmbeddingsConfig = EmbeddingsConfig()
     ingestion: IngestionConfig = IngestionConfig()
+    notion: NotionConfig = NotionConfig()
     webhooks: WebhooksConfig = WebhooksConfig()
 
 

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import get_collection_port, get_system_config
-from app.api.routes import chat, collections, documents, system, webhooks
+from app.api.routes import chat, collections, documents, notion, system, webhooks
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,11 @@ async def lifespan(app: FastAPI):
     try:
         collection_port = get_collection_port(system_config=config)
         existing = await collection_port.list_collections()
-        for name in ("langgraph-docs", config.webhooks.edgenotes_collection):
+        for name in (
+            "langgraph-docs",
+            config.webhooks.edgenotes_collection,
+            config.notion.default_collection,
+        ):
             if name not in existing:
                 await collection_port.create(name, vector_size=768)
                 logger.info("Created Qdrant collection: %s", name)
@@ -82,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(documents.router, prefix="/api")
     app.include_router(system.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
+    app.include_router(notion.router, prefix="/api")
 
     return app
 
