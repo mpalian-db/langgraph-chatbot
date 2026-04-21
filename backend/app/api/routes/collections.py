@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.dependencies import CollectionDep
+from app.core.operations.collections import rebuild_collection as _rebuild
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -86,12 +87,7 @@ async def rebuild_collection(
     ``vector_size`` as a query parameter to override.
     """
     try:
-        await collection_store.delete_collection(name)
-    except Exception:
-        # Collection may not exist yet -- proceed to create.
-        pass
-    try:
-        await collection_store.create(name, vector_size)
+        await _rebuild(collection_store, name, vector_size)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"name": name, "status": "rebuilt"}

@@ -84,6 +84,12 @@ def test_citation_coverage_empty_or_trivial_sentences_returns_one():
     assert _citation_coverage("OK. Yes. No.") == pytest.approx(1.0)
 
 
+def test_citation_coverage_ignores_abbreviations_and_decimals():
+    # "e.g." and "0.85" should not be treated as sentence boundaries.
+    text = "See e.g. LangGraph with score 0.85 for building agents [chunk-1]."
+    assert _citation_coverage(text) == pytest.approx(1.0)
+
+
 # ---------------------------------------------------------------------------
 # citation_coverage check integration tests (via run())
 # ---------------------------------------------------------------------------
