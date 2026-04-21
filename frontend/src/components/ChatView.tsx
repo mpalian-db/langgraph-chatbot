@@ -117,7 +117,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 // ---------------------------------------------------------------------------
 
 export default function ChatView() {
-  const { messages, loading, error, send, clear } = useChat();
+  const { messages, loading, activeNode, error, send, clear } = useChat();
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
@@ -175,7 +175,13 @@ export default function ChatView() {
         {loading && (
           <div className="flex justify-start">
             <div className="rounded-lg bg-gray-800 px-4 py-3 text-sm text-gray-400">
-              Thinking...
+              {activeNode ? (
+                <span>
+                  Running <span className="font-medium text-indigo-400">{activeNode}</span>...
+                </span>
+              ) : (
+                "Thinking..."
+              )}
             </div>
           </div>
         )}

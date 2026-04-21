@@ -12,6 +12,7 @@ import type {
   CreateCollectionRequest,
   DocumentOut,
   IngestResponse,
+  StreamEvent,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,41 @@ export async function sendChatMessage(
   body: ChatRequest,
 ): Promise<ChatResponse> {
   return request<ChatResponse>("/api/chat", jsonBody(body));
+}
+
+export async function* sendChatStream(
+  body: ChatRequest,
+): AsyncGenerator<StreamEvent> {
+  const res = await fetch("/api/chat/stream", jsonBody(body));
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new ApiError(res.status, text || res.statusText);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed) {
+        yield JSON.parse(trimmed) as StreamEvent;
+      }
+    }
+  }
+
+  // Flush any remaining data in the buffer.
+  if (buffer.trim()) {
+    yield JSON.parse(buffer.trim()) as StreamEvent;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -66,6 +66,30 @@ export interface DocumentOut {
 }
 
 // ---------------------------------------------------------------------------
+// Streaming chat events (NDJSON from /api/chat/stream)
+// ---------------------------------------------------------------------------
+
+export interface StreamEventNodeStart {
+  event: "node_start";
+  node: string;
+}
+
+export interface StreamEventNodeEnd {
+  event: "node_end";
+  node: string;
+}
+
+export interface StreamEventResult {
+  event: "result";
+  data: ChatResponse;
+}
+
+export type StreamEvent =
+  | StreamEventNodeStart
+  | StreamEventNodeEnd
+  | StreamEventResult;
+
+// ---------------------------------------------------------------------------
 // UI-level types (not from backend)
 // ---------------------------------------------------------------------------
 
