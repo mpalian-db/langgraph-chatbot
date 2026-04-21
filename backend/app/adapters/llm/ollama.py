@@ -37,7 +37,7 @@ class OllamaLLMAdapter:
             "options": {"num_predict": max_tokens},
         }
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = [_to_ollama_tool(t) for t in tools]
 
         response = await self._client.chat(**kwargs)
 
@@ -62,6 +62,21 @@ class OllamaLLMAdapter:
                 "output_tokens": response.eval_count or 0,
             },
         }
+
+
+def _to_ollama_tool(tool: dict[str, Any]) -> dict[str, Any]:
+    """Convert an Anthropic-style tool definition to Ollama format.
+
+    Anthropic uses 'input_schema'; Ollama expects 'parameters'.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": tool["name"],
+            "description": tool.get("description", ""),
+            "parameters": tool.get("input_schema", tool.get("parameters", {})),
+        },
+    }
 
 
 def _to_ollama_messages(msg: dict[str, Any]) -> list[dict[str, Any]]:
