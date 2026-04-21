@@ -22,6 +22,7 @@ from app.core.config.loader import load_agents_config, load_system_config
 from app.core.config.models import AgentsConfig, SystemConfig
 from app.ports.embedding import EmbeddingPort
 from app.ports.llm import LLMPort
+from app.ports.notion import NotionPort
 from app.ports.storage import DocumentStoragePort
 from app.ports.vectorstore import CollectionPort, VectorStorePort
 
@@ -115,6 +116,15 @@ def get_storage() -> DocumentStoragePort:
     return LocalFileStorageAdapter(base_dir=storage_dir)
 
 
+def get_notion() -> NotionPort:
+    import os
+
+    from app.adapters.ingestion.notion import NotionAdapter
+
+    token = os.environ.get("NOTION_TOKEN", "")
+    return NotionAdapter(token=token)
+
+
 # ---------------------------------------------------------------------------
 # Typed dependency aliases for route signatures
 # ---------------------------------------------------------------------------
@@ -126,3 +136,4 @@ VectorStoreDep = Annotated[VectorStorePort, Depends(get_vector_store)]
 CollectionDep = Annotated[CollectionPort, Depends(get_collection_port)]
 EmbeddingDep = Annotated[EmbeddingPort, Depends(get_embedding)]
 StorageDep = Annotated[DocumentStoragePort, Depends(get_storage)]
+NotionDep = Annotated[NotionPort, Depends(get_notion)]
