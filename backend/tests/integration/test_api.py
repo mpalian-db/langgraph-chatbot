@@ -249,3 +249,65 @@ async def test_webhook_rejects_invalid_secret(client: AsyncClient) -> None:
         headers={"X-Webhook-Secret": "wrong-secret"},
     )
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Notion sync endpoint
+# ---------------------------------------------------------------------------
+
+
+async def test_notion_sync_returns_400_without_database_id(
+    client: AsyncClient, temp_collection: str
+) -> None:
+    import os
+
+    if os.environ.get("NOTION_DATABASE_ID"):
+        pytest.skip("NOTION_DATABASE_ID is set -- skipping missing-var test")
+
+    resp = await client.post(f"/api/collections/{temp_collection}/sync-notion")
+    assert resp.status_code == 400
+    assert "NOTION_DATABASE_ID" in resp.json()["detail"]
+
+
+async def test_notion_sync_response_schema(client: AsyncClient, temp_collection: str) -> None:
+    import os
+
+    if not os.environ.get("NOTION_TOKEN") or not os.environ.get("NOTION_DATABASE_ID"):
+        pytest.skip("NOTION_TOKEN and NOTION_DATABASE_ID required for this test")
+
+    resp = await client.post(f"/api/collections/{temp_collection}/sync-notion")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["collection"] == temp_collection
+    assert isinstance(data["pages_synced"], int)
+    assert isinstance(data["total_chunks"], int)
+    assert data["pages_synced"] >= 0
+    assert data["total_chunks"] >= 0
+
+
+# ---------------------------------------------------------------------------
+# Worklog agent via chat
+# ---------------------------------------------------------------------------
+
+
+async def test_chat_worklog_route_fallback(client: AsyncClient) -> None:
+    """Worklog queries succeed even when WORKLOG_WORKER_URL is not set (falls back to chat)."""
+    response = await client.post("/api/chat", json={"query": "show my worklog plans"})
+    assert response.status_code == 200
+    data = response.json()
+    assert "answer" in data
+    assert isinstance(data["answer"], str)
+    assert len(data["answer"]) > 0
+
+
+async def test_chat_worklog_route_with_worker(client: AsyncClient) -> None:
+    import os
+
+    if not os.environ.get("WORKLOG_WORKER_URL"):
+        pytest.skip("WORKLOG_WORKER_URL required for worklog route test")
+
+    response = await client.post("/api/chat", json={"query": "list my worklog plans"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["route"] == "worklog"
+    assert isinstance(data["answer"], str)

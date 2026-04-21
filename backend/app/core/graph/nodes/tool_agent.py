@@ -41,6 +41,13 @@ async def run(
             final_text = response["text"]
             break
 
+        # Append the assistant turn once per response (not once per tool call).
+        messages.append({"role": "assistant", "content": response["text"] or ""})
+
+        # Collect all tool results and batch them into a single user message.
+        # The Anthropic API requires all tool_result blocks for one assistant
+        # turn to arrive in a single role:user message.
+        tool_result_blocks = []
         for tool_use in response["tool_use"]:
             tool_result = await _execute_tool(
                 tool_use["name"],
@@ -54,19 +61,14 @@ async def run(
                     name=tool_use["name"], arguments=tool_use["input"], result=str(tool_result)
                 )
             )
-            messages.append({"role": "assistant", "content": response["text"] or ""})
-            messages.append(
+            tool_result_blocks.append(
                 {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": tool_use["id"],
-                            "content": str(tool_result),
-                        },
-                    ],
+                    "type": "tool_result",
+                    "tool_use_id": tool_use["id"],
+                    "content": str(tool_result),
                 }
             )
+        messages.append({"role": "user", "content": tool_result_blocks})
 
     elapsed_ms = (time.monotonic() - start) * 1000
     return {
@@ -106,4 +108,24 @@ async def _execute_tool(
         vector_size = args.get("vector_size", 768)
         await rebuild_collection(collection_store, coll, vector_size)
         return {"collection": coll, "status": "rebuilt"}
+    if name == "upload_document":
+        from app.core.models.types import Chunk
+        from app.ingestion.chunker import chunk_text
+
+        coll = args["collection"]
+        filename = args["filename"]
+        text = args["text"]
+        raw_chunks = chunk_text(text, filename, coll)
+        chunks = [
+            Chunk(id=c["id"], text=c["text"], collection=coll, metadata=c["metadata"])
+            for c in raw_chunks
+        ]
+        vectors = await embedding.embed([c.text for c in chunks])
+        await vectorstore.upsert(coll, chunks, vectors)
+        return {"collection": coll, "chunks_ingested": len(chunks)}
+    if name == "delete_document":
+        coll = args["collection"]
+        ids = args["ids"]
+        await vectorstore.delete(coll, ids)
+        return {"collection": coll, "deleted": len(ids)}
     return f"Unknown tool: {name}"

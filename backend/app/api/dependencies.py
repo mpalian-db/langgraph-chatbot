@@ -73,6 +73,17 @@ def get_vector_store(
     provider = system_config.vectorstore.provider
     if provider == "qdrant":
         return QdrantVectorStoreAdapter(url=system_config.vectorstore.qdrant_url)
+    if provider == "vectorize":
+        import os
+
+        from app.adapters.vectorstore.vectorize import VectorizeAdapter
+
+        return VectorizeAdapter(
+            account_id=os.environ.get("CF_ACCOUNT_ID") or os.environ["CLOUDFLARE_ACCOUNT_ID"],
+            api_token=os.environ.get("CF_API_TOKEN") or os.environ["CLOUDFLARE_API_TOKEN"],
+            index_name=system_config.vectorstore.vectorize_index_name,
+            known_collections=system_config.vectorstore.known_collections,
+        )
     msg = f"Unknown vector store provider: {provider}"
     raise ValueError(msg)
 
@@ -81,9 +92,21 @@ def get_collection_port(
     system_config: SystemConfig = Depends(get_system_config),
 ) -> CollectionPort:
     # The Qdrant adapter implements both VectorStorePort and CollectionPort.
+    # The Vectorize adapter also implements both -- index provisioned externally.
     provider = system_config.vectorstore.provider
     if provider == "qdrant":
         return QdrantVectorStoreAdapter(url=system_config.vectorstore.qdrant_url)
+    if provider == "vectorize":
+        import os
+
+        from app.adapters.vectorstore.vectorize import VectorizeAdapter
+
+        return VectorizeAdapter(
+            account_id=os.environ.get("CF_ACCOUNT_ID") or os.environ["CLOUDFLARE_ACCOUNT_ID"],
+            api_token=os.environ.get("CF_API_TOKEN") or os.environ["CLOUDFLARE_API_TOKEN"],
+            index_name=system_config.vectorstore.vectorize_index_name,
+            known_collections=system_config.vectorstore.known_collections,
+        )
     msg = f"Unknown collection provider: {provider}"
     raise ValueError(msg)
 
@@ -104,8 +127,8 @@ def get_embedding(
         from app.adapters.embeddings.workers_ai import WorkersAIEmbeddingAdapter
 
         return WorkersAIEmbeddingAdapter(
-            account_id=os.environ["CF_ACCOUNT_ID"],
-            api_token=os.environ["CF_API_TOKEN"],
+            account_id=os.environ.get("CF_ACCOUNT_ID") or os.environ["CLOUDFLARE_ACCOUNT_ID"],
+            api_token=os.environ.get("CF_API_TOKEN") or os.environ["CLOUDFLARE_API_TOKEN"],
             model=system_config.embeddings.workers_ai_model,
         )
     msg = f"Unknown embedding provider: {provider}"

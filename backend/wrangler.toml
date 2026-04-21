@@ -1,0 +1,13 @@
+name = "langgraph-chatbot-backend"
+main = "app/main.py"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["python_workers"]
+
+[vars]
+# Non-secret config values. Secrets (API keys) are set via `wrangler secret put`
+# or injected as environment variables in the CI/CD deploy workflow.
+LOG_LEVEL = "info"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "langgraph-chatbot"

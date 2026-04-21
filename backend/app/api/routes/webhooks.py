@@ -94,7 +94,11 @@ async def handle_note_webhook(
     x_webhook_secret: str | None = Header(default=None),
 ) -> None:
     """Receive note lifecycle events from EdgeNotes and sync to Qdrant."""
-    expected_secret = system_config.webhooks.edgenotes_secret
+    import os
+
+    expected_secret = system_config.webhooks.edgenotes_secret or os.environ.get(
+        "LANGGRAPH_WEBHOOK_SECRET", ""
+    )
     if expected_secret and x_webhook_secret != expected_secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 

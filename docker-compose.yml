@@ -7,6 +7,33 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./config:/app/config
+      - ./corpus:/app/corpus
+      - ./data:/app/data
+    depends_on:
+      - qdrant
+    profiles:
+      - full
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    profiles:
+      - full
+
   n8n:
     image: n8nio/n8n:latest
     restart: unless-stopped

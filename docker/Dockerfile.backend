@@ -1,0 +1,22 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install uv for fast dependency installation.
+RUN pip install --no-cache-dir uv
+
+# Copy dependency manifests first for layer caching.
+COPY backend/pyproject.toml backend/uv.lock* ./
+
+# Install production dependencies only (--frozen ensures lockfile is not modified).
+RUN uv sync --frozen --no-dev
+
+# Copy application source.
+COPY backend/app ./app
+
+# Copy config (mounted as a volume in dev; baked in for production builds).
+COPY config ./config
+
+EXPOSE 8000
+
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

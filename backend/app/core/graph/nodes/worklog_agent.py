@@ -14,6 +14,10 @@ from app.ports.worklog import WorklogPort
 # ISO week key pattern: YYYY-Www (e.g. 2026-W16)
 _PLAN_KEY_RE = re.compile(r"\b(\d{4}-W\d{1,2})\b")
 
+# Phrases that signal the user explicitly wants a *new* plan generated,
+# not a report or summary referencing an existing one.
+_GENERATE_PHRASES = ("generate a new plan", "create a new plan", "new worklog plan")
+
 
 async def run(
     state: GraphState,
@@ -75,9 +79,6 @@ async def _fetch_worklog_context(query: str, worklog: WorklogPort) -> str:
 
     query_lower = query.lower()
 
-    # Only trigger generation when the intent is explicitly to create a *new* plan,
-    # not when the user says "generate a report from..." or "create a summary of...".
-    _GENERATE_PHRASES = ("generate a new plan", "create a new plan", "new worklog plan")
     if any(phrase in query_lower for phrase in _GENERATE_PHRASES):
         plan = await worklog.generate_plan()
         return json.dumps(
