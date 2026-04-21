@@ -33,6 +33,39 @@ ollama-check:
         echo "All models already pulled."
     fi
 
+# ─── Ingestion ────────────────────────────────────────────────────────────────
+
+# Ingest all files from corpus/<collection> into the named collection.
+# Usage: just ingest langgraph-docs
+# Requires the backend to be running on localhost:8000.
+ingest collection:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="corpus/{{collection}}"
+    if [ ! -d "$dir" ]; then
+        echo "Directory $dir not found"
+        exit 1
+    fi
+    # Create the collection (ignore 409 if it already exists).
+    status=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/api/collections \
+        -H "Content-Type: application/json" \
+        -d "{\"name\": \"{{collection}}\", \"vector_size\": 768}")
+    if [ "$status" != "200" ] && [ "$status" != "409" ]; then
+        echo "Failed to create collection (HTTP $status)"
+        exit 1
+    fi
+    echo "Ingesting files from $dir into collection '{{collection}}'..."
+    count=0
+    for f in "$dir"/*.md "$dir"/*.txt "$dir"/*.pdf; do
+        [ -f "$f" ] || continue
+        filename=$(basename "$f")
+        echo "  uploading $filename"
+        curl -s -X POST "http://localhost:8000/api/collections/{{collection}}/documents" \
+            -F "file=@$f" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'    -> {d[\"chunk_count\"]} chunks')"
+        count=$((count + 1))
+    done
+    echo "Done. Ingested $count file(s) into '{{collection}}'."
+
 # ─── Dev ──────────────────────────────────────────────────────────────────────
 
 # Start Qdrant + Langfuse + backend + frontend for local dev.
