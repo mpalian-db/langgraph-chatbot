@@ -141,7 +141,8 @@ def _parse_verifier_response(text: str) -> VerifierResult:
     unsupported_match = re.search(r"UNSUPPORTED:\s*(.+)", text)
 
     outcome = outcome_match.group(1).lower() if outcome_match else "refuse"
-    score = float(score_match.group(1)) if score_match else 0.0
+    raw_score = float(score_match.group(1)) if score_match else 0.0
+    score = min(1.0, max(0.0, raw_score))
     reason = reason_match.group(1).strip() if reason_match else "Unable to verify"
     unsupported_raw = unsupported_match.group(1).strip() if unsupported_match else "NONE"
     unsupported = (

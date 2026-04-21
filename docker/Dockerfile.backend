@@ -8,8 +8,8 @@ RUN pip install --no-cache-dir uv
 # Copy dependency manifests first for layer caching.
 COPY backend/pyproject.toml backend/uv.lock* ./
 
-# Install production dependencies only.
-RUN uv sync --no-dev
+# Install production dependencies only (--frozen ensures lockfile is not modified).
+RUN uv sync --frozen --no-dev
 
 # Copy application source.
 COPY backend/app ./app

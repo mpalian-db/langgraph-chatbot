@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable
 
 from langgraph.graph import END, StateGraph
 
@@ -80,9 +83,15 @@ def build_graph(
             ),
         )
 
+    if worklog is None and "worklog" in agents_config.router.routes:
+        raise ValueError(
+            "Router config includes 'worklog' route but no WorklogPort was provided. "
+            "Either supply a WorklogPort or remove 'worklog' from router.routes in agents.toml."
+        )
+
     builder.set_entry_point("router")
 
-    route_map: dict[str, str] = {
+    route_map: dict[Hashable, str] = {
         "chat": "chat_agent",
         "rag": "retrieval",
         "tool": "tool_agent",

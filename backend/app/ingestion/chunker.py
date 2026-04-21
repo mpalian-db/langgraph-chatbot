@@ -11,6 +11,10 @@ def chunk_text(
     chunk_overlap: int = 64,
 ) -> list[dict]:
     """Split text into overlapping character-based chunks."""
+    if chunk_overlap >= chunk_size:
+        raise ValueError(
+            f"chunk_overlap ({chunk_overlap}) must be less than chunk_size ({chunk_size})"
+        )
     chunks: list[dict] = []
     start = 0
     while start < len(text):
