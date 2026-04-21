@@ -53,6 +53,38 @@ TOOL_REGISTRY: dict[str, dict] = {
             "required": ["collection"],
         },
     },
+    "upload_document": {
+        "name": "upload_document",
+        "description": (
+            "Ingest a plain-text document into a collection. "
+            "Chunks the text, embeds it, and upserts into the vector store."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "collection": {"type": "string", "description": "Target collection name"},
+                "filename": {"type": "string", "description": "Source filename for metadata"},
+                "text": {"type": "string", "description": "Plain text content to ingest"},
+            },
+            "required": ["collection", "filename", "text"],
+        },
+    },
+    "delete_document": {
+        "name": "delete_document",
+        "description": "Delete specific chunks from a collection by their chunk IDs.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "collection": {"type": "string", "description": "Collection name"},
+                "ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of chunk IDs to delete",
+                },
+            },
+            "required": ["collection", "ids"],
+        },
+    },
 }
 
 

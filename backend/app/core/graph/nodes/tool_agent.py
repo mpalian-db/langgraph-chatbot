@@ -106,4 +106,24 @@ async def _execute_tool(
         vector_size = args.get("vector_size", 768)
         await rebuild_collection(collection_store, coll, vector_size)
         return {"collection": coll, "status": "rebuilt"}
+    if name == "upload_document":
+        from app.core.models.types import Chunk
+        from app.ingestion.chunker import chunk_text
+
+        coll = args["collection"]
+        filename = args["filename"]
+        text = args["text"]
+        raw_chunks = chunk_text(text, filename, coll)
+        chunks = [
+            Chunk(id=c["id"], text=c["text"], collection=coll, metadata=c["metadata"])
+            for c in raw_chunks
+        ]
+        vectors = await embedding.embed([c.text for c in chunks])
+        await vectorstore.upsert(coll, chunks, vectors)
+        return {"collection": coll, "chunks_ingested": len(chunks)}
+    if name == "delete_document":
+        coll = args["collection"]
+        ids = args["ids"]
+        await vectorstore.delete(coll, ids)
+        return {"collection": coll, "deleted": len(ids)}
     return f"Unknown tool: {name}"

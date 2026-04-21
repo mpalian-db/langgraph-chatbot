@@ -73,6 +73,16 @@ def get_vector_store(
     provider = system_config.vectorstore.provider
     if provider == "qdrant":
         return QdrantVectorStoreAdapter(url=system_config.vectorstore.qdrant_url)
+    if provider == "vectorize":
+        import os
+
+        from app.adapters.vectorstore.vectorize import VectorizeAdapter
+
+        return VectorizeAdapter(
+            account_id=os.environ["CF_ACCOUNT_ID"],
+            api_token=os.environ["CF_API_TOKEN"],
+            index_name=system_config.vectorstore.vectorize_index_name,
+        )
     msg = f"Unknown vector store provider: {provider}"
     raise ValueError(msg)
 
@@ -81,9 +91,20 @@ def get_collection_port(
     system_config: SystemConfig = Depends(get_system_config),
 ) -> CollectionPort:
     # The Qdrant adapter implements both VectorStorePort and CollectionPort.
+    # The Vectorize adapter also implements both -- index provisioned externally.
     provider = system_config.vectorstore.provider
     if provider == "qdrant":
         return QdrantVectorStoreAdapter(url=system_config.vectorstore.qdrant_url)
+    if provider == "vectorize":
+        import os
+
+        from app.adapters.vectorstore.vectorize import VectorizeAdapter
+
+        return VectorizeAdapter(
+            account_id=os.environ["CF_ACCOUNT_ID"],
+            api_token=os.environ["CF_API_TOKEN"],
+            index_name=system_config.vectorstore.vectorize_index_name,
+        )
     msg = f"Unknown collection provider: {provider}"
     raise ValueError(msg)
 

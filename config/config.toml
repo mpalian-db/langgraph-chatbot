@@ -12,8 +12,11 @@ langfuse_host = "http://localhost:3000" # self-hosted; or "https://cloud.langfus
 langfuse_project = "langgraph-chatbot"
 
 [vectorstore]
-provider = "qdrant"
+provider = "qdrant"                   # "qdrant" (default) or "vectorize" (Cloudflare)
 qdrant_url = "http://localhost:6333"
+# vectorize settings (uncomment for Cloudflare deployment):
+# vectorize_index_name = "langgraph-chatbot"
+# CF_ACCOUNT_ID and CF_API_TOKEN must be set as environment variables.
 
 [embeddings]
 provider = "ollama"                     # "ollama" (default) or "workers-ai"

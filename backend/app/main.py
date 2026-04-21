@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     else:
         app.state.langfuse = None
 
-    # Ensure required Qdrant collections exist (idempotent).
+    # Ensure required collections exist (idempotent; no-op for Vectorize).
     try:
         collection_port = get_collection_port(system_config=config)
         existing = await collection_port.list_collections()
@@ -49,9 +49,9 @@ async def lifespan(app: FastAPI):
         ):
             if name not in existing:
                 await collection_port.create(name, vector_size=768)
-                logger.info("Created Qdrant collection: %s", name)
+                logger.info("Created collection: %s", name)
     except Exception:
-        logger.warning("Could not ensure Qdrant collections -- is Qdrant running?", exc_info=True)
+        logger.warning("Could not ensure collections on startup", exc_info=True)
 
     yield
 
