@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -9,6 +10,9 @@ from app.core.graph.state import GraphState
 from app.core.models.types import TraceEntry
 from app.ports.llm import LLMPort
 from app.ports.worklog import WorklogPort
+
+# ISO week key pattern: YYYY-Www (e.g. 2026-W16)
+_PLAN_KEY_RE = re.compile(r"\b(\d{4}-W\d{1,2})\b")
 
 
 async def run(
@@ -51,9 +55,30 @@ async def run(
 
 
 async def _fetch_worklog_context(query: str, worklog: WorklogPort) -> str:
+    # Check for a specific plan key first -- if found, retrieve it regardless
+    # of other keywords in the query (avoids false-positive generate triggers).
+    key = _extract_plan_key(query)
+    if key:
+        plan = await worklog.get_plan(key)
+        return json.dumps(
+            {
+                "action": "get_plan",
+                "plan": {
+                    "key": plan.key,
+                    "created_at": plan.created_at,
+                    "total_hours": plan.total_hours,
+                    "entries": plan.entries,
+                },
+            },
+            indent=2,
+        )
+
     query_lower = query.lower()
 
-    if "generate" in query_lower or "create" in query_lower or "new plan" in query_lower:
+    # Only trigger generation when the intent is explicitly to create a *new* plan,
+    # not when the user says "generate a report from..." or "create a summary of...".
+    _GENERATE_PHRASES = ("generate a new plan", "create a new plan", "new worklog plan")
+    if any(phrase in query_lower for phrase in _GENERATE_PHRASES):
         plan = await worklog.generate_plan()
         return json.dumps(
             {
@@ -67,23 +92,6 @@ async def _fetch_worklog_context(query: str, worklog: WorklogPort) -> str:
             },
             indent=2,
         )
-
-    if "plan " in query_lower or "plan:" in query_lower:
-        key = _extract_plan_key(query)
-        if key:
-            plan = await worklog.get_plan(key)
-            return json.dumps(
-                {
-                    "action": "get_plan",
-                    "plan": {
-                        "key": plan.key,
-                        "created_at": plan.created_at,
-                        "total_hours": plan.total_hours,
-                        "entries": plan.entries,
-                    },
-                },
-                indent=2,
-            )
 
     plans = await worklog.list_plans()
     return json.dumps(
@@ -103,9 +111,6 @@ async def _fetch_worklog_context(query: str, worklog: WorklogPort) -> str:
 
 
 def _extract_plan_key(query: str) -> str | None:
-    for word in query.split():
-        if word.startswith("plan:"):
-            return word.split(":", 1)[1]
-        if "-" in word and any(c.isdigit() for c in word):
-            return word
-    return None
+    """Extract an ISO week plan key (YYYY-Www) from the query, or None."""
+    match = _PLAN_KEY_RE.search(query)
+    return match.group(1) if match else None
