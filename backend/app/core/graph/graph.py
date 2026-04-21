@@ -83,11 +83,12 @@ def build_graph(
             ),
         )
 
-    if worklog is None and "worklog" in agents_config.router.routes:
-        raise ValueError(
-            "Router config includes 'worklog' route but no WorklogPort was provided. "
-            "Either supply a WorklogPort or remove 'worklog' from router.routes in agents.toml."
-        )
+    # Silently drop the worklog route when no WorklogPort is configured so the
+    # service starts normally without WORKLOG_WORKER_URL set.
+    if worklog is None:
+        agents_config.router.routes = [
+            r for r in agents_config.router.routes if r != "worklog"
+        ]
 
     builder.set_entry_point("router")
 
