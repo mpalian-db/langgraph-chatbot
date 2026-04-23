@@ -98,10 +98,11 @@ class QdrantVectorStoreAdapter:
 
     async def get_stats(self, name: str) -> dict:
         info = await self._client.get_collection(collection_name=name)
+        count = info.points_count or 0
         return {
             "name": name,
-            "vectors_count": info.vectors_count,  # type: ignore[attr-defined]
-            "points_count": info.points_count,  # type: ignore[attr-defined]
+            "vectors_count": count,
+            "points_count": count,
         }
 
 

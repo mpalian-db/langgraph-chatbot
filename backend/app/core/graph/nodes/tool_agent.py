@@ -44,11 +44,13 @@ async def run(
 
         # Append the assistant turn once per response. Include _tool_use so
         # adapters can reconstruct their native tool_calls field (e.g. Ollama).
-        messages.append({
-            "role": "assistant",
-            "content": response["text"] or "",
-            "_tool_use": response["tool_use"],
-        })
+        messages.append(
+            {
+                "role": "assistant",
+                "content": response["text"] or "",
+                "_tool_use": response["tool_use"],
+            }
+        )
 
         # Collect all tool results and batch them into a single user message.
         # The Anthropic API requires all tool_result blocks for one assistant

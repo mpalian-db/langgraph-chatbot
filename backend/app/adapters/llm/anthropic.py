@@ -22,10 +22,7 @@ class AnthropicLLMAdapter:
     ) -> dict[str, Any]:
         """Complete a prompt and return a structured response."""
         # Strip private keys (e.g. _tool_use) used for cross-provider message routing.
-        clean_messages = [
-            {k: v for k, v in m.items() if not k.startswith("_")}
-            for m in messages
-        ]
+        clean_messages = [{k: v for k, v in m.items() if not k.startswith("_")} for m in messages]
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": clean_messages,

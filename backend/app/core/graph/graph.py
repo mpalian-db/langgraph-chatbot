@@ -86,9 +86,7 @@ def build_graph(
     # Silently drop the worklog route when no WorklogPort is configured so the
     # service starts normally without WORKLOG_WORKER_URL set.
     if worklog is None:
-        agents_config.router.routes = [
-            r for r in agents_config.router.routes if r != "worklog"
-        ]
+        agents_config.router.routes = [r for r in agents_config.router.routes if r != "worklog"]
 
     builder.set_entry_point("router")
 

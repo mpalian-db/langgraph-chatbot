@@ -117,7 +117,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 // ---------------------------------------------------------------------------
 
 export default function ChatView() {
-  const { messages, loading, activeNode, error, send, clear } = useChat();
+  const { messages, loading, activeNode, error, send } = useChat();
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
@@ -159,88 +159,111 @@ export default function ChatView() {
   );
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Messages */}
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.length === 0 && !loading && (
-          <p className="pt-16 text-center text-sm text-gray-500">
-            Ask a question to start the conversation.
-          </p>
-        )}
-
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} />
-        ))}
-
-        {loading && (
-          <div className="flex justify-start">
-            <div className="rounded-lg bg-gray-800 px-4 py-3 text-sm text-gray-400">
-              {activeNode ? (
-                <span>
-                  Running <span className="font-medium text-indigo-400">{activeNode}</span>...
-                </span>
-              ) : (
-                "Thinking..."
-              )}
-            </div>
+    <div className="flex h-full">
+      {/* Left panel -- collection picker */}
+      {collections.length > 0 && (
+        <aside className="flex w-52 flex-col border-r border-gray-700">
+          <div className="border-b border-gray-700 px-4 py-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Collections
+            </h2>
           </div>
-        )}
-
-        {error && (
-          <div className="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
-            {error}
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input area */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-end gap-2 border-t border-gray-700 bg-gray-800 p-4"
-      >
-        {/* Collection selector */}
-        {collections.length > 0 && (
-          <select
-            value={selectedCollection}
-            onChange={(e) => setSelectedCollection(e.target.value)}
-            className="rounded border border-gray-600 bg-gray-700 px-2 py-2 text-sm text-gray-200 focus:border-indigo-500 focus:outline-none"
-          >
-            <option value="">All collections</option>
+          <ul className="flex-1 overflow-y-auto">
+            <li
+              role="button"
+              tabIndex={0}
+              onClick={() => setSelectedCollection("")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setSelectedCollection("");
+              }}
+              className={`cursor-pointer px-4 py-2 text-sm transition-colors ${
+                selectedCollection === ""
+                  ? "bg-indigo-900/40 text-indigo-300"
+                  : "text-gray-300 hover:bg-gray-800"
+              }`}
+            >
+              All collections
+            </li>
             {collections.map((c) => (
-              <option key={c} value={c}>
+              <li
+                key={c}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedCollection(c)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setSelectedCollection(c);
+                }}
+                className={`cursor-pointer px-4 py-2 text-sm transition-colors ${
+                  selectedCollection === c
+                    ? "bg-indigo-900/40 text-indigo-300"
+                    : "text-gray-300 hover:bg-gray-800"
+                }`}
+              >
                 {c}
-              </option>
+              </li>
             ))}
-          </select>
-        )}
+          </ul>
+        </aside>
+      )}
 
-        <textarea
-          rows={1}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your message..."
-          className="flex-1 resize-none rounded border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
-        />
+      {/* Right panel -- chat messages and input */}
+      <div className="flex flex-1 flex-col">
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          {messages.length === 0 && !loading && (
+            <p className="pt-16 text-center text-sm text-gray-500">
+              Ask a question to start the conversation.
+            </p>
+          )}
 
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          {messages.map((msg) => (
+            <MessageBubble key={msg.id} msg={msg} />
+          ))}
+
+          {loading && (
+            <div className="flex justify-start">
+              <div className="rounded-lg bg-gray-800 px-4 py-3 text-sm text-gray-400">
+                {activeNode ? (
+                  <span>
+                    Running <span className="font-medium text-indigo-400">{activeNode}</span>...
+                  </span>
+                ) : (
+                  "Thinking..."
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-red-800 bg-red-900/30 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="flex items-end gap-2 border-t border-gray-700 bg-gray-800 p-4"
         >
-          Send
-        </button>
+          <textarea
+            rows={1}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type your message..."
+            className="flex-1 resize-none rounded border border-gray-600 bg-gray-700 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+          />
 
-        <button
-          type="button"
-          onClick={clear}
-          className="rounded border border-gray-600 px-3 py-2 text-sm text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-200"
-        >
-          Clear
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
