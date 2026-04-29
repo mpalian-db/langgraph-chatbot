@@ -335,18 +335,58 @@ async def test_get_chunk_returns_none_when_metadata_collection_mismatches():
     assert result is None
 
 
-async def test_delete_posts_to_delete_by_ids():
-    """Cloudflare's endpoint is `delete_by_ids` (underscores). See:
-    https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/delete_by_ids/"""
+async def test_delete_fetches_and_deletes_only_matching_collection():
+    """Cross-collection isolation: delete must check each id's metadata
+    collection before issuing delete_by_ids. Two HTTP calls: first
+    get_by_ids, then delete_by_ids with the filtered subset."""
     seen: list[httpx.Request] = []
-    adapter = _adapter([_resp({"result": {}})], seen=seen)
+    get_body = {
+        "result": [
+            {"id": "c1", "metadata": {"collection": "docs"}},
+            {"id": "c2", "metadata": {"collection": "notes"}},  # different collection
+        ]
+    }
+    adapter = _adapter([_resp(get_body), _resp({"result": {}})], seen=seen)
 
     await adapter.delete("docs", ["c1", "c2"])
 
-    req = seen[0]
-    assert req.url.path.endswith("/delete_by_ids")
-    payload = json.loads(req.content)
-    assert payload["ids"] == ["c1", "c2"]
+    # Two requests in order: get_by_ids, then delete_by_ids.
+    assert len(seen) == 2
+    assert seen[0].url.path.endswith("/get_by_ids")
+    assert seen[1].url.path.endswith("/delete_by_ids")
+    # delete_by_ids only includes the id whose metadata.collection matched.
+    delete_payload = json.loads(seen[1].content)
+    assert delete_payload["ids"] == ["c1"]
+
+
+async def test_delete_skips_delete_call_when_no_ids_match_collection():
+    """If none of the ids belong to the requested collection, the adapter
+    must NOT issue a delete_by_ids call at all -- a no-op delete is the
+    correct end state."""
+    seen: list[httpx.Request] = []
+    get_body = {
+        "result": [
+            {"id": "c1", "metadata": {"collection": "notes"}},
+        ]
+    }
+    adapter = _adapter([_resp(get_body)], seen=seen)
+
+    await adapter.delete("docs", ["c1"])
+
+    # Only the get_by_ids call -- no delete_by_ids.
+    assert len(seen) == 1
+    assert seen[0].url.path.endswith("/get_by_ids")
+
+
+async def test_delete_short_circuits_on_empty_id_list():
+    """An empty id list must not even attempt the get_by_ids call -- this
+    avoids gratuitous network round-trips on no-op deletes."""
+    seen: list[httpx.Request] = []
+    adapter = _adapter([], seen=seen)
+
+    await adapter.delete("docs", [])
+
+    assert seen == []
 
 
 # ---------------------------------------------------------------------------

@@ -393,3 +393,28 @@ def test_validate_llm_providers_raises_when_default_itself_is_missing(mock_llm):
             llms={"ollama": mock_llm},
             default_provider="anthropic",
         )
+
+
+def test_validate_llm_providers_skips_disabled_agents(mock_llm):
+    """A bad provider on an agent that won't be instantiated at runtime
+    must not crash startup. The lifespan passes worklog_agent into
+    skip_agents when WORKLOG_WORKER_URL is unset."""
+    config = AgentsConfig()
+    config.worklog_agent.provider = "anthropic"  # would normally fail
+
+    # With worklog_agent skipped, validation passes even though anthropic
+    # isn't registered.
+    validate_llm_providers(
+        agents_config=config,
+        llms={"ollama": mock_llm},
+        default_provider="ollama",
+        skip_agents={"worklog_agent"},
+    )
+
+    # And without the skip, it correctly fails.
+    with pytest.raises(ValueError, match="worklog_agent"):
+        validate_llm_providers(
+            agents_config=config,
+            llms={"ollama": mock_llm},
+            default_provider="ollama",
+        )

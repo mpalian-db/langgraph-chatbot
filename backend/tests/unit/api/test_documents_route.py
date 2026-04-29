@@ -14,7 +14,6 @@ from httpx import ASGITransport, AsyncClient
 from app.api.dependencies import (
     get_collection_port,
     get_embedding,
-    get_storage,
     get_system_config,
     get_vector_store,
 )
@@ -38,7 +37,6 @@ def test_app(fake_vectorstore):
     app.dependency_overrides[get_vector_store] = lambda: fake_vectorstore
     app.dependency_overrides[get_collection_port] = lambda: AsyncMock()
     app.dependency_overrides[get_embedding] = lambda: AsyncMock()
-    app.dependency_overrides[get_storage] = lambda: AsyncMock()
     return app
 
 

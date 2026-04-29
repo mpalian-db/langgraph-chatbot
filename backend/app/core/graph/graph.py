@@ -29,6 +29,7 @@ def validate_llm_providers(
     agents_config: AgentsConfig,
     llms: Mapping[str, LLMPort],
     default_provider: str,
+    skip_agents: set[str] | None = None,
 ) -> None:
     """Walk every LLM-using agent and confirm its requested provider is in
     the registry. Raises ValueError listing every failure at once.
@@ -38,7 +39,13 @@ def validate_llm_providers(
     surfaces before the first chat request, not as a 500 mid-traffic.
 
     Collecting all failures into a single error keeps the operator from
-    fixing one missing key, restarting, and discovering another."""
+    fixing one missing key, restarting, and discovering another.
+
+    `skip_agents` lets callers exclude agents that won't be instantiated at
+    runtime -- e.g. worklog_agent is only added to the graph when a
+    WorklogPort is configured, so validating its provider when worklog is
+    disabled would falsely crash startup on an unused config."""
+    skip = skip_agents or set()
     llm_using = {
         "router": agents_config.router,
         "chat_agent": agents_config.chat_agent,
@@ -49,6 +56,8 @@ def validate_llm_providers(
     }
     failures: list[str] = []
     for name, cfg in llm_using.items():
+        if name in skip:
+            continue
         provider = cfg.provider or default_provider
         if provider not in llms:
             failures.append(

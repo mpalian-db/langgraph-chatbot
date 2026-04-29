@@ -161,13 +161,32 @@ class VectorizeAdapter:
         )
 
     async def delete(self, collection: str, ids: list[str]) -> None:
-        # Cloudflare's endpoint is `delete_by_ids` (underscores). See:
-        # https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/delete_by_ids/
-        resp = await self._client.post(
-            f"{self._base}/delete_by_ids",
+        # Vectorize has no native sub-collections, and its delete_by_ids
+        # endpoint accepts no metadata filter -- so cross-collection isolation
+        # must be enforced client-side. Fetch each id first and delete only
+        # those whose metadata.collection matches the caller's logical
+        # collection. Without this, a caller who learned an id from
+        # collection A could delete it via the collection B path.
+        # See:
+        #   https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/delete_by_ids/
+        if not ids:
+            return
+        get_resp = await self._client.post(
+            f"{self._base}/get_by_ids",
             json={"ids": ids},
         )
-        resp.raise_for_status()
+        get_resp.raise_for_status()
+        found = get_resp.json().get("result") or []
+        matching = [
+            str(v["id"]) for v in found if (v.get("metadata") or {}).get("collection") == collection
+        ]
+        if not matching:
+            return
+        del_resp = await self._client.post(
+            f"{self._base}/delete_by_ids",
+            json={"ids": matching},
+        )
+        del_resp.raise_for_status()
 
     async def list_documents(
         self,

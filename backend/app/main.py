@@ -31,15 +31,26 @@ async def lifespan(app: FastAPI):
     # the first chat request.
     agents_config = get_agents_config()
     llm_registry = get_llm_registry(system_config=config)
+    # Skip agents that won't be wired into the graph at runtime -- otherwise a
+    # bad worklog_agent.provider would crash startup even when WORKLOG_WORKER_URL
+    # is unset and the node is never instantiated.
+    import os as _os
+
+    skip_agents: set[str] = set()
+    if not _os.environ.get("WORKLOG_WORKER_URL"):
+        skip_agents.add("worklog_agent")
+
     validate_llm_providers(
         agents_config=agents_config,
         llms=llm_registry,
         default_provider=config.llm.provider,
+        skip_agents=skip_agents,
     )
     logger.info(
-        "LLM provider validation passed (registry: %s, default: %s)",
+        "LLM provider validation passed (registry: %s, default: %s, skipped: %s)",
         sorted(llm_registry.keys()),
         config.llm.provider,
+        sorted(skip_agents) or "none",
     )
 
     # Initialise Langfuse tracing when enabled.
