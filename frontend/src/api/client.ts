@@ -68,8 +68,13 @@ export async function sendChatMessage(
 
 export async function* sendChatStream(
   body: ChatRequest,
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetch("/api/chat/stream", jsonBody(body));
+  // Forward the signal so the underlying TCP/fetch can be aborted mid-stream.
+  // Without this, a hung backend would leave the UI permanently in `loading`
+  // state with no escape path -- see the "New conversation" affordance in
+  // useChat.ts which calls AbortController.abort() to recover.
+  const res = await fetch("/api/chat/stream", { ...jsonBody(body), signal });
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
     throw new ApiError(res.status, text || res.statusText);

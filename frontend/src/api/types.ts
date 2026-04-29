@@ -12,6 +12,10 @@
 export interface ChatRequest {
   query: string;
   collection?: string;
+  // Bind this turn to an existing conversation. When omitted the server
+  // generates a new uuid and returns it on the response, which the client
+  // should then echo back on follow-up turns to maintain history.
+  conversation_id?: string;
 }
 
 export interface CitationOut {
@@ -28,6 +32,9 @@ export interface TraceEntryOut {
 
 export interface ChatResponse {
   answer: string;
+  // Always populated by the backend -- generated on first turn, echoed
+  // verbatim on subsequent turns of the same conversation.
+  conversation_id: string;
   route: string | null;
   citations: CitationOut[];
   trace: TraceEntryOut[];

@@ -117,7 +117,8 @@ function MessageBubble({ msg }: { msg: Message }) {
 // ---------------------------------------------------------------------------
 
 export default function ChatView() {
-  const { messages, loading, activeNode, error, send } = useChat();
+  const { messages, loading, activeNode, error, conversationId, send, clear } =
+    useChat();
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
@@ -208,6 +209,27 @@ export default function ChatView() {
 
       {/* Right panel -- chat messages and input */}
       <div className="flex flex-1 flex-col">
+        {/* Conversation header: shows id of current conversation and a
+            button to start a new one. Only visible once a conversation has
+            actually started -- no chrome on the empty state. */}
+        {conversationId && (
+          <div className="flex items-center justify-between border-b border-gray-700 bg-gray-900/40 px-4 py-2 text-xs">
+            <span className="text-gray-500">
+              Conversation{" "}
+              <code className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-gray-400">
+                {conversationId.slice(0, 8)}
+              </code>
+            </span>
+            <button
+              type="button"
+              onClick={clear}
+              className="rounded border border-gray-700 px-2 py-1 text-gray-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
+            >
+              New conversation
+            </button>
+          </div>
+        )}
+
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {messages.length === 0 && !loading && (
             <p className="pt-16 text-center text-sm text-gray-500">
