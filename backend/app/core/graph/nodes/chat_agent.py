@@ -17,8 +17,14 @@ async def run(
 ) -> dict[str, Any]:
     start = time.monotonic()
 
+    # Feed prior turns chronologically so the LLM has conversational context.
+    # The current query is appended last as the new user turn. When `history`
+    # is empty the prompt collapses to single-turn behaviour.
+    messages = [{"role": turn.role, "content": turn.content} for turn in state.history]
+    messages.append({"role": "user", "content": state.query})
+
     response = await llm.complete(
-        messages=[{"role": "user", "content": state.query}],
+        messages=messages,
         model=config.model,
         system=config.system_prompt,
         max_tokens=config.max_tokens,

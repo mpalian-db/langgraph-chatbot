@@ -61,10 +61,20 @@ async def run(
 
 
 def _extract_citations(text: str, chunks: list) -> list[Citation]:
-    """Extract citations for chunk IDs referenced in square brackets."""
-    cited_ids = set(re.findall(r"\[([a-f0-9\-]{36})\]", text))
+    """Extract citations for chunk IDs referenced in square brackets.
+
+    Matches any bracketed token (e.g. `[abc-123]` or a uuid or a sha-prefix),
+    then keeps only those equal to a real chunk id in `chunks`. Validating
+    against the actual id set is more robust than format-based regexes -- the
+    chunker emits uuid4 (36 chars with hyphens), the Notion sync route emits
+    sha256 hex prefixes (32 chars, no hyphens), and any future ingest pipeline
+    can produce its own format without breaking citation extraction.
+
+    A hallucinated id from the LLM that happens to fit the bracket pattern but
+    does not match a retrieved chunk is silently dropped."""
+    bracketed = set(re.findall(r"\[([^\[\]\s]+)\]", text))
     return [
         Citation(chunk_id=c.id, text=c.text[:200], collection=c.collection)
         for c in chunks
-        if c.id in cited_ids
+        if c.id in bracketed
     ]

@@ -60,6 +60,7 @@ async def run(
             tool_result = await _execute_tool(
                 tool_use["name"],
                 tool_use["input"],
+                allowed_tools=config.allowed_tools,
                 vectorstore=vectorstore,
                 collection_store=collection_store,
                 embedding=embedding,
@@ -95,10 +96,17 @@ async def _execute_tool(
     name: str,
     args: dict,
     *,
+    allowed_tools: list[str],
     vectorstore: VectorStorePort,
     collection_store: CollectionPort,
     embedding: EmbeddingPort,
 ) -> Any:
+    # Defence-in-depth: the LLM only sees schemas for allowed tools, but a
+    # hallucinated or stale tool_use must still be refused at the dispatcher.
+    # Returning a string lets the LLM observe the denial in its next turn and
+    # recover, matching the existing fallthrough for unknown tools.
+    if name not in allowed_tools:
+        return f"Tool '{name}' is not permitted for this agent."
     if name == "list_collections":
         return await collection_store.list_collections()
     if name == "get_collection_stats":

@@ -75,9 +75,16 @@ class SystemConfig(_StrictModel):
     webhooks: WebhooksConfig = WebhooksConfig()
 
 
+# A node config may set `provider` to override the system default LLM (e.g. the
+# verifier may run on Anthropic while the rest of the graph stays on Ollama).
+# `None` means "use system default", set in config/config.toml under [llm].
+ProviderOverride = Literal["ollama", "anthropic"] | None
+
+
 class RouterConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     prompt: str = ""
     routes: list[str] = ["chat", "rag", "tool"]
 
@@ -85,6 +92,7 @@ class RouterConfig(_StrictModel):
 class ChatAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     system_prompt: str = "You are a helpful assistant. Answer clearly and concisely."
     max_tokens: int = 2048
 
@@ -100,6 +108,7 @@ class RetrievalConfig(_StrictModel):
 class AnswerGenerationConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.1:8b"
+    provider: ProviderOverride = None
     prompt_template: str = (
         "Answer the user's question using only the evidence provided below. "
         "Cite chunk IDs inline where you use them.\n\nEvidence:\n{evidence}\n\nQuestion: {query}"
@@ -110,6 +119,7 @@ class AnswerGenerationConfig(_StrictModel):
 class VerifierConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.1:8b"
+    provider: ProviderOverride = None
     score_threshold: float = 0.75
     citation_coverage_min: float = 0.8
     max_retries: int = 2
@@ -119,6 +129,7 @@ class VerifierConfig(_StrictModel):
 class ToolAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     system_prompt: str = (
         "You are a tool-using assistant. Use the available tools to answer the user's request. "
         "Always call the appropriate tool first, then report what the tool returned. "
@@ -131,6 +142,7 @@ class ToolAgentConfig(_StrictModel):
 class WorklogAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     system_prompt: str = (
         "You are a worklog assistant. You help the user understand their logged hours "
         "and worklog plans. You can list existing plans, show plan details, and generate "

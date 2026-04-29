@@ -9,8 +9,16 @@ from app.core.graph.state import GraphState
 from app.core.models.types import TraceEntry, VerifierResult
 from app.ports.llm import LLMPort
 
-# Matches inline citations of the form [chunk-id] or [abc-123].
-_CITATION_RE = re.compile(r"\[\w[\w-]*\]")
+# Match any non-empty bracketed token that is NOT followed by `(` (which would
+# make it a markdown link, e.g. `[click here](url)`). Captures the inner token.
+# This regex allows nested forms like `[[chunk-id]]` to surface `chunk-id` via
+# the inner-bracket match.
+_BRACKET_TOKEN_RE = re.compile(r"\[([^\[\]\s]+)\](?!\()")
+
+# Match fenced code blocks (```...```) and inline code spans (`...`). These
+# may contain bracketed tokens that look like citations but are actually
+# syntax examples, not grounded claims. We strip them before counting.
+_CODE_SPAN_RE = re.compile(r"```.*?```|`[^`\n]+`", re.DOTALL)
 
 
 async def run(
@@ -45,7 +53,8 @@ async def run(
 
     # Check 2: citation coverage (deterministic, no LLM call)
     if "citation_coverage" in config.checks and state.draft_answer:
-        coverage = _citation_coverage(state.draft_answer)
+        valid_ids = [c.id for c in state.retrieved_chunks]
+        coverage = _citation_coverage(state.draft_answer, valid_ids=valid_ids)
         if coverage < config.citation_coverage_min:
             result = VerifierResult(
                 outcome="revise",
@@ -120,17 +129,28 @@ def _build_return(
     return update
 
 
-def _citation_coverage(text: str) -> float:
-    """Return the fraction of non-trivial sentences that contain at least one citation.
+def _citation_coverage(text: str, *, valid_ids: list[str]) -> float:
+    """Return the fraction of non-trivial sentences citing a real chunk id.
 
-    A sentence is non-trivial when it contains five or more words.  If there are
-    no non-trivial sentences the answer is considered fully covered (1.0).
+    A sentence is non-trivial when it contains five or more words. If there
+    are no non-trivial sentences the answer is considered fully covered (1.0).
+
+    A sentence "cites a real chunk" when it contains at least one bracketed
+    token equal to an id in `valid_ids`. Hallucinated ids and markdown link
+    syntax `[text](url)` are excluded -- the regex skips brackets followed
+    by `(`, and tokens that don't match any real id are dropped.
     """
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s|\n", text) if s.strip()]
+    valid = set(valid_ids)
+    # Strip code spans / fenced blocks first -- bracketed tokens inside code
+    # are syntax examples, not citations of the surrounding answer.
+    stripped = _CODE_SPAN_RE.sub("", text)
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s|\n", stripped) if s.strip()]
     non_trivial = [s for s in sentences if len(s.split()) >= 5]
     if not non_trivial:
         return 1.0
-    cited = sum(1 for s in non_trivial if _CITATION_RE.search(s))
+    cited = sum(
+        1 for s in non_trivial if any(token in valid for token in _BRACKET_TOKEN_RE.findall(s))
+    )
     return cited / len(non_trivial)
 
 

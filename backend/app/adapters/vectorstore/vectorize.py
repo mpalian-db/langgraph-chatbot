@@ -8,6 +8,7 @@ because Vectorize index provisioning is done via Wrangler outside the applicatio
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -97,23 +98,46 @@ class VectorizeAdapter:
         chunks: list[Chunk],
         vectors: list[list[float]],
     ) -> None:
-        vectors_payload = [
+        # Fail loudly on mismatched inputs rather than silently truncating
+        # via zip() -- silent data loss is the worst kind in an ingest path.
+        if len(chunks) != len(vectors):
+            msg = (
+                f"chunks and vectors must have equal length; "
+                f"got {len(chunks)} chunks and {len(vectors)} vectors"
+            )
+            raise ValueError(msg)
+
+        # The Vectorize upsert REST endpoint expects a multipart-form upload
+        # of newline-delimited JSON, NOT a JSON request body. See:
+        #   https://developers.cloudflare.com/vectorize/best-practices/insert-vectors
+        # The form-field name used here is `vectors`, matching the documented
+        # Python example for /insert. The /upsert REST reference page shows a
+        # curl example using `body` as the field name; the API may accept
+        # either, but this has not been validated against a live account. If
+        # /upsert returns a 400 in production, try renaming the field to
+        # `body` before debugging further.
+        # Reserved keys (text, collection) MUST win over chunk metadata so a
+        # rogue metadata blob cannot land vectors in a foreign collection.
+        records = [
             {
                 "id": chunk.id,
                 "values": vector,
-                "metadata": {"text": chunk.text, "collection": collection, **chunk.metadata},
+                "metadata": {**chunk.metadata, "text": chunk.text, "collection": collection},
             }
             for chunk, vector in zip(chunks, vectors)
         ]
+        ndjson_body = "\n".join(json.dumps(r) for r in records).encode()
         resp = await self._client.post(
             f"{self._base}/upsert",
-            json={"vectors": vectors_payload},
+            files={"vectors": ("vectors.ndjson", ndjson_body, "application/x-ndjson")},
         )
         resp.raise_for_status()
 
     async def delete(self, collection: str, ids: list[str]) -> None:
+        # Cloudflare's endpoint is `delete_by_ids` (underscores). See:
+        # https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/delete_by_ids/
         resp = await self._client.post(
-            f"{self._base}/delete-by-ids",
+            f"{self._base}/delete_by_ids",
             json={"ids": ids},
         )
         resp.raise_for_status()

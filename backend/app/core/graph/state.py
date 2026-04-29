@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.core.models.types import Chunk, Citation, ToolCall, TraceEntry, VerifierResult
+from app.ports.conversation import Turn
 
 
 @dataclass
 class GraphState:
     query: str
+    conversation_id: str | None = None
+    history: list[Turn] = field(default_factory=list)
     route: str | None = None
     collection: str | None = None
     retrieval_query: str | None = None

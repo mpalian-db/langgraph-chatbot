@@ -64,6 +64,7 @@ async def sync_notion(
         )
 
     pages = await notion.list_pages(database_id)
+    pages_synced = 0
     total_chunks = 0
 
     for page in pages:
@@ -103,16 +104,18 @@ async def sync_notion(
         texts = [c.text for c in chunks]
         vectors = await embedding.embed(texts)
         await vectorstore.upsert(collection, chunks, vectors)
+        pages_synced += 1
         total_chunks += len(chunks)
 
     logger.info(
-        "Notion sync: %d pages, %d chunks into collection %s",
+        "Notion sync: %d/%d pages ingested, %d chunks into collection %s",
+        pages_synced,
         len(pages),
         total_chunks,
         collection,
     )
     return NotionSyncResponse(
         collection=collection,
-        pages_synced=len(pages),
+        pages_synced=pages_synced,
         total_chunks=total_chunks,
     )
