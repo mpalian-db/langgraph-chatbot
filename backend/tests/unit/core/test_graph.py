@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.config.models import AgentsConfig
-from app.core.graph.graph import build_graph
+from app.core.graph.graph import build_graph, validate_llm_providers
 from app.core.graph.state import GraphState
 
 
@@ -315,3 +315,81 @@ async def test_graph_build_does_not_mutate_input_router_routes(
         "build_graph mutated agents_config.router.routes; this leaks across "
         "requests because get_agents_config() returns an lru_cached singleton"
     )
+
+
+# ---------------------------------------------------------------------------
+# validate_llm_providers (startup-time validation)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_llm_providers_passes_when_default_covers_everything(mock_llm):
+    """Default provider in registry, no overrides -- all good."""
+    config = AgentsConfig()
+    # No overrides; default_provider="ollama" must be enough.
+    validate_llm_providers(
+        agents_config=config,
+        llms={"ollama": mock_llm},
+        default_provider="ollama",
+    )
+
+
+def test_validate_llm_providers_passes_when_overrides_are_registered(mock_llm):
+    """A node may override to anthropic; registry has both -- valid."""
+    config = AgentsConfig()
+    config.verifier.provider = "anthropic"
+
+    validate_llm_providers(
+        agents_config=config,
+        llms={"ollama": mock_llm, "anthropic": mock_llm},
+        default_provider="ollama",
+    )
+
+
+def test_validate_llm_providers_raises_with_clear_message_for_missing_override(mock_llm):
+    """Verifier wants anthropic but registry has only ollama -- raise."""
+    config = AgentsConfig()
+    config.verifier.provider = "anthropic"
+
+    with pytest.raises(ValueError, match="verifier"):
+        validate_llm_providers(
+            agents_config=config,
+            llms={"ollama": mock_llm},
+            default_provider="ollama",
+        )
+
+
+def test_validate_llm_providers_collects_all_failures(mock_llm):
+    """Multiple misconfigured agents must all appear in the error message,
+    so the operator fixes them in one pass instead of restarting per fix."""
+    config = AgentsConfig()
+    config.verifier.provider = "anthropic"
+    config.tool_agent.provider = "anthropic"
+    config.answer_generation.provider = "anthropic"
+
+    with pytest.raises(ValueError) as excinfo:
+        validate_llm_providers(
+            agents_config=config,
+            llms={"ollama": mock_llm},
+            default_provider="ollama",
+        )
+
+    msg = str(excinfo.value)
+    assert "verifier" in msg
+    assert "tool_agent" in msg
+    assert "answer_generation" in msg
+    # The default-provider users (router, chat_agent, worklog_agent) must
+    # NOT appear -- their provider is None, falls back to the registered default.
+    assert "router" not in msg
+    assert "chat_agent" not in msg
+
+
+def test_validate_llm_providers_raises_when_default_itself_is_missing(mock_llm):
+    """If the system default isn't even in the registry, every node fails."""
+    config = AgentsConfig()
+
+    with pytest.raises(ValueError, match="anthropic"):
+        validate_llm_providers(
+            agents_config=config,
+            llms={"ollama": mock_llm},
+            default_provider="anthropic",
+        )

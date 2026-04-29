@@ -25,6 +25,44 @@ from app.ports.vectorstore import CollectionPort, VectorStorePort
 from app.ports.worklog import WorklogPort
 
 
+def validate_llm_providers(
+    agents_config: AgentsConfig,
+    llms: Mapping[str, LLMPort],
+    default_provider: str,
+) -> None:
+    """Walk every LLM-using agent and confirm its requested provider is in
+    the registry. Raises ValueError listing every failure at once.
+
+    This runs at application startup so misconfiguration (e.g. agents.toml
+    requests `provider = "anthropic"` but ANTHROPIC_API_KEY is unset)
+    surfaces before the first chat request, not as a 500 mid-traffic.
+
+    Collecting all failures into a single error keeps the operator from
+    fixing one missing key, restarting, and discovering another."""
+    llm_using = {
+        "router": agents_config.router,
+        "chat_agent": agents_config.chat_agent,
+        "answer_generation": agents_config.answer_generation,
+        "verifier": agents_config.verifier,
+        "tool_agent": agents_config.tool_agent,
+        "worklog_agent": agents_config.worklog_agent,
+    }
+    failures: list[str] = []
+    for name, cfg in llm_using.items():
+        provider = cfg.provider or default_provider
+        if provider not in llms:
+            failures.append(
+                f"  - agent {name!r} requests provider {provider!r} which is not registered"
+            )
+    if failures:
+        msg = (
+            "LLM provider configuration is invalid. The following node "
+            f"overrides reference unregistered providers (registry has: "
+            f"{sorted(llms.keys())}):\n" + "\n".join(failures)
+        )
+        raise ValueError(msg)
+
+
 def _resolve_llm(agent_cfg: Any, llms: Mapping[str, LLMPort], default_provider: str) -> LLMPort:
     """Pick the LLM port for an agent: its `provider` override, else default.
 

@@ -280,6 +280,61 @@ async def test_upsert_raises_on_length_mismatch_without_calling_api():
 # ---------------------------------------------------------------------------
 
 
+async def test_get_chunk_returns_chunk_when_metadata_collection_matches():
+    """The Cloudflare Vectorize index is shared across logical collections;
+    a chunk only counts as belonging to a collection when its metadata says so."""
+    seen: list[httpx.Request] = []
+    body = {
+        "result": [
+            {
+                "id": "c1",
+                "metadata": {"text": "hello world", "collection": "docs", "page_id": "p1"},
+            }
+        ]
+    }
+    adapter = _adapter([_resp(body)], seen=seen)
+
+    chunk = await adapter.get_chunk("docs", "c1")
+
+    assert chunk is not None
+    assert chunk.id == "c1"
+    assert chunk.text == "hello world"
+    assert chunk.collection == "docs"
+    assert chunk.metadata == {"page_id": "p1"}
+
+    req = seen[0]
+    assert req.url.path.endswith("/get_by_ids")
+    payload = json.loads(req.content)
+    assert payload == {"ids": ["c1"]}
+
+
+async def test_get_chunk_returns_none_when_id_not_found():
+    adapter = _adapter([_resp({"result": []})])
+
+    result = await adapter.get_chunk("docs", "missing")
+
+    assert result is None
+
+
+async def test_get_chunk_returns_none_when_metadata_collection_mismatches():
+    """Cross-collection isolation: a chunk in `notes` must not surface when
+    queried under `docs`, even though Vectorize itself doesn't enforce
+    sub-collections."""
+    body = {
+        "result": [
+            {
+                "id": "c1",
+                "metadata": {"text": "private", "collection": "notes"},
+            }
+        ]
+    }
+    adapter = _adapter([_resp(body)])
+
+    result = await adapter.get_chunk("docs", "c1")
+
+    assert result is None
+
+
 async def test_delete_posts_to_delete_by_ids():
     """Cloudflare's endpoint is `delete_by_ids` (underscores). See:
     https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/delete_by_ids/"""

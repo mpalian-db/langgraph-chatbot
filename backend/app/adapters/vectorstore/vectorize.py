@@ -133,6 +133,33 @@ class VectorizeAdapter:
         )
         resp.raise_for_status()
 
+    async def get_chunk(self, collection: str, chunk_id: str) -> Chunk | None:
+        # Cloudflare endpoint: POST /get_by_ids with {"ids": [...]}. Returns
+        # an array of {id, metadata, values}. See:
+        # https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/get_by_ids/
+        # Note: Vectorize has no native sub-collections; we additionally
+        # check that the returned vector's metadata.collection matches the
+        # logical collection we were asked about, otherwise we return None
+        # (the caller didn't specify a chunk in this collection).
+        resp = await self._client.post(
+            f"{self._base}/get_by_ids",
+            json={"ids": [chunk_id]},
+        )
+        resp.raise_for_status()
+        result = resp.json().get("result") or []
+        if not result:
+            return None
+        v = result[0]
+        metadata = v.get("metadata") or {}
+        if metadata.get("collection") != collection:
+            return None
+        return Chunk(
+            id=str(v["id"]),
+            text=metadata.get("text", ""),
+            collection=collection,
+            metadata={k: val for k, val in metadata.items() if k not in ("text", "collection")},
+        )
+
     async def delete(self, collection: str, ids: list[str]) -> None:
         # Cloudflare's endpoint is `delete_by_ids` (underscores). See:
         # https://developers.cloudflare.com/api/resources/vectorize/subresources/indexes/methods/delete_by_ids/

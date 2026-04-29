@@ -46,6 +46,7 @@ def mock_vectorstore():
     )
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
+    vs.get_chunk = AsyncMock(return_value=None)
     return vs
 
 
