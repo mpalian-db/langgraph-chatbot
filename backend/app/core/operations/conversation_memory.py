@@ -10,11 +10,14 @@ returning the trimmed view to the caller.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from app.core.config.models import SummariserConfig
 from app.ports.conversation import ConversationReaderPort, ConversationWriterPort, Turn
 from app.ports.llm import LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,16 +53,43 @@ async def load_with_summary(
         return MemoryView(summary=summary, recent=_strip(all_recent))
 
     # Above threshold: summarise everything except the last `keep_recent`.
+    # Defensive guard: even though SummariserConfig's validator enforces
+    # summarise_threshold >= keep_recent, a programmatically-constructed
+    # config could bypass it. An empty to_summarise slice would have no
+    # boundary id to mark, so skip the round and return the current view.
     to_summarise = all_recent[: -config.keep_recent]
+    if not to_summarise:
+        logger.warning(
+            "Summariser triggered with no older turns to fold "
+            "(keep_recent=%d, threshold=%d, len=%d) -- skipping",
+            config.keep_recent,
+            config.summarise_threshold,
+            len(all_recent),
+        )
+        return MemoryView(summary=summary, recent=_strip(all_recent))
+
     keep = all_recent[-config.keep_recent :]
-    new_summary_text = await _summarise(
-        prior_summary=summary,
-        turns=_strip(to_summarise),
-        llm=llm,
-        config=config,
-    )
-    boundary_id = to_summarise[-1].id
-    await writer.upsert_summary(conversation_id, new_summary_text, boundary_id)
+    # Best-effort summarisation: if the LLM call or the storage write fails,
+    # fall back to returning the unsummarised history rather than 500'ing
+    # the chat request. Summarisation is an enhancement; chat must still work
+    # without it. The next chat request will retry the same trigger.
+    try:
+        new_summary_text = await _summarise(
+            prior_summary=summary,
+            turns=_strip(to_summarise),
+            llm=llm,
+            config=config,
+        )
+        boundary_id = to_summarise[-1].id
+        await writer.upsert_summary(conversation_id, new_summary_text, boundary_id)
+    except Exception:
+        logger.warning(
+            "Summarisation failed for conversation %s; falling back to "
+            "unsummarised history (the next request will retry).",
+            conversation_id,
+            exc_info=True,
+        )
+        return MemoryView(summary=summary, recent=_strip(all_recent))
 
     return MemoryView(summary=new_summary_text, recent=_strip(keep))
 

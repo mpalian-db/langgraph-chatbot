@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class _StrictModel(BaseModel):
@@ -151,10 +151,13 @@ class SummariserConfig(_StrictModel):
     model: str = "llama3.2:3b"
     provider: ProviderOverride = None
     # Number of trailing turns kept verbatim (not folded into the summary).
+    # Must be >= 1 -- keeping zero recent turns would leave the chat agent
+    # with no fresh context immediately after a summarisation round.
     keep_recent: int = 10
     # When the unsummarised tail exceeds this length, summarisation triggers
-    # on the next load. Setting equal to keep_recent disables summarisation
-    # in practice (nothing would ever be older than the keep window).
+    # on the next load. Must be >= keep_recent so there is always at least
+    # one older turn to fold into the summary when the trigger fires --
+    # otherwise the slice `all_recent[:-keep_recent]` is empty.
     summarise_threshold: int = 20
     prompt: str = (
         "Summarise the following conversation between a user and an "
@@ -164,6 +167,23 @@ class SummariserConfig(_StrictModel):
         "turns into it rather than restarting."
     )
     max_tokens: int = 512
+
+    @model_validator(mode="after")
+    def _check_window_invariants(self) -> SummariserConfig:
+        if self.keep_recent < 1:
+            msg = "keep_recent must be at least 1"
+            raise ValueError(msg)
+        if self.summarise_threshold < self.keep_recent:
+            msg = (
+                f"summarise_threshold ({self.summarise_threshold}) must be "
+                f">= keep_recent ({self.keep_recent}); otherwise the trigger "
+                "fires when there are no older turns to summarise"
+            )
+            raise ValueError(msg)
+        if self.max_tokens < 1:
+            msg = "max_tokens must be at least 1"
+            raise ValueError(msg)
+        return self
 
 
 class WorklogAgentConfig(_StrictModel):

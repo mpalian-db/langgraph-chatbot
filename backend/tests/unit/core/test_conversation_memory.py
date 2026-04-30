@@ -10,6 +10,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from app.adapters.conversation.sqlite import SQLiteConversationStore
 from app.core.config.models import SummariserConfig
@@ -189,3 +190,101 @@ async def test_disabled_summariser_never_calls_llm(
     summary_llm.complete.assert_not_called()
     # All 100 turns come back verbatim -- caller takes the full prompt cost.
     assert len(view.recent) == 100
+
+
+# ---------------------------------------------------------------------------
+# Config validation
+# ---------------------------------------------------------------------------
+
+
+def test_summariser_config_rejects_keep_recent_zero():
+    with pytest.raises(ValidationError, match="keep_recent"):
+        SummariserConfig(keep_recent=0)
+
+
+def test_summariser_config_rejects_threshold_below_keep_recent():
+    """The whole point of summarisation is that some turns are old enough
+    to fold in. summarise_threshold < keep_recent means the trigger fires
+    when there are no older turns -- the slice is empty and the config is
+    incoherent."""
+    with pytest.raises(ValidationError, match="summarise_threshold"):
+        SummariserConfig(keep_recent=10, summarise_threshold=5)
+
+
+def test_summariser_config_accepts_equal_threshold_and_keep_recent():
+    """The boundary case is allowed: threshold == keep_recent means
+    summarisation triggers on the FIRST turn beyond keep_recent, with
+    exactly one turn folded in. Tight but valid."""
+    config = SummariserConfig(keep_recent=10, summarise_threshold=10)
+    assert config.summarise_threshold == config.keep_recent
+
+
+# ---------------------------------------------------------------------------
+# Resilience: summariser failures must not break chat
+# ---------------------------------------------------------------------------
+
+
+async def test_summariser_failure_falls_back_to_unsummarised_history(
+    store: SQLiteConversationStore,
+):
+    """If the summariser LLM raises, the chat request must still work --
+    just without compression. Summarisation is an enhancement, not a hard
+    dependency. Storage must remain unchanged so the next request can
+    retry."""
+    flaky_llm = AsyncMock()
+    flaky_llm.complete = AsyncMock(side_effect=RuntimeError("LLM provider down"))
+
+    for i in range(25):
+        await store.append("conv-1", "user", f"turn-{i}")
+
+    view = await load_with_summary(
+        "conv-1",
+        reader=store,
+        writer=store,
+        llm=flaky_llm,
+        config=_config(),
+    )
+
+    # Returned view: full unsummarised history, no summary.
+    assert view.summary is None
+    assert len(view.recent) == 25
+    # Storage must be unchanged -- no partial summary persisted.
+    summary, post = await store.load_summary_and_turns("conv-1")
+    assert summary is None
+    assert len(post) == 25
+
+
+async def test_summariser_skips_when_no_older_turns_to_summarise(
+    store: SQLiteConversationStore, summary_llm: AsyncMock
+):
+    """Even though SummariserConfig's validator prevents keep_recent >=
+    threshold at parse time, a programmatically-constructed config could
+    bypass it. Defensive guard: if the slice is empty, skip the round and
+    return the current view -- never IndexError on `to_summarise[-1]`."""
+    for i in range(11):
+        await store.append("conv-1", "user", f"turn-{i}")
+
+    # Bypass the validator by constructing the config directly with
+    # model_construct (no validation). Equivalent to having a buggy
+    # caller skip pydantic.
+    bypass_config = SummariserConfig.model_construct(
+        enabled=True,
+        keep_recent=11,
+        summarise_threshold=10,
+        max_tokens=512,
+        prompt="x",
+        model="m",
+    )
+
+    view = await load_with_summary(
+        "conv-1",
+        reader=store,
+        writer=store,
+        llm=summary_llm,
+        config=bypass_config,
+    )
+
+    # No LLM call, no IndexError.
+    summary_llm.complete.assert_not_called()
+    assert view.summary is None
+    assert len(view.recent) == 11
