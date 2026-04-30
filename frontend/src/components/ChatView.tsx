@@ -249,7 +249,13 @@ export default function ChatView() {
               {conversationDetail && (
                 <>
                   <span className="text-gray-600">·</span>
-                  <span title={`turn count for ${conversationId}`}>
+                  <span
+                    title={
+                      conversationDetail.summary
+                        ? "Verbatim turns kept after summarisation; older turns are folded into the summary."
+                        : `turn count for ${conversationId}`
+                    }
+                  >
                     {conversationDetail.turns.length}{" "}
                     turn{conversationDetail.turns.length !== 1 && "s"}
                   </span>
@@ -257,7 +263,7 @@ export default function ChatView() {
                     <>
                       <span className="text-gray-600">·</span>
                       <span
-                        title="A rolling summary has been generated for older turns"
+                        title="A rolling summary has been generated for older turns. Hover the turn count to see how the verbatim window is computed."
                         className="rounded bg-indigo-900/40 px-1.5 py-0.5 text-indigo-300"
                       >
                         summarised

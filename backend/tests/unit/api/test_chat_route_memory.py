@@ -260,6 +260,42 @@ async def test_stream_endpoint_returns_conversation_id_in_result_event(
     assert result_events[0]["data"]["conversation_id"] == "stream-1"
 
 
+async def test_stream_endpoint_preserves_memory_load_trace_entry(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    """The synthetic memory_load TraceEntry is prepended to the initial
+    GraphState's execution_trace BEFORE the graph runs. Node deltas
+    accumulate further trace entries via `state.execution_trace + [...]`,
+    so the memory entry should survive through to the streamed result
+    event.
+
+    Pin this contract because the streaming endpoint reconstructs
+    `final_state` from per-node on_chain_end deltas; a regression that
+    overwrote rather than accumulated trace would silently drop the
+    memory_load entry from the response."""
+    import json
+
+    # Prime a warm conversation so memory_load reports 2 history turns.
+    await store.append("stream-trace", "user", "old user")
+    await store.append("stream-trace", "assistant", "old assistant")
+
+    resp = await client.post(
+        "/api/chat/stream",
+        json={"query": "follow up", "conversation_id": "stream-trace"},
+    )
+    assert resp.status_code == 200
+
+    events = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    [result] = [e for e in events if e.get("event") == "result"]
+    trace = result["data"]["trace"]
+
+    memory_entries = [t for t in trace if t["node"] == "memory_load"]
+    assert len(memory_entries) == 1
+    assert memory_entries[0]["data"]["history_turns"] == 2
+    assert memory_entries[0]["data"]["summary_present"] is False
+    assert memory_entries[0]["data"]["summarisation_triggered"] is False
+
+
 async def test_stream_endpoint_persists_turn_pair_atomically(
     client: AsyncClient, store: SQLiteConversationStore
 ):
