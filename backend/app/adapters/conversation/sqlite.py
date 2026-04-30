@@ -186,22 +186,42 @@ class SQLiteConversationStore:
         return await asyncio.to_thread(self._list_conversations_sync)
 
     def _list_conversations_sync(self) -> list[ConversationOverview]:
-        # One query gathers per-conversation aggregates (count, max created_at)
-        # and joins the summary presence flag. Most-recently-active first.
-        # COALESCE pulls the summary's updated_at when no turns exist for the
-        # conversation but a summary row does -- a defensive case that
-        # shouldn't occur in normal usage but ordering still needs a value.
+        # SQLite doesn't support FULL OUTER JOIN, so we UNION ALL two
+        # GROUP-BY views -- one per source table -- and re-aggregate. This
+        # guarantees a conversation surfaces in the list whether it has
+        # only turns, only a summary (rare but reachable), or both.
+        # Re-aggregation pattern:
+        #   * SUM over turn_count: turns-side rows contribute the real count;
+        #     summary-side rows contribute 0.
+        #   * MAX over has_summary: 1 if any source row sets it.
+        #   * MAX over last_at: the most recent activity, taking either the
+        #     last turn's created_at or the summary's updated_at, whichever
+        #     is newer. Ordering by this column means "most recently active
+        #     first" works for both turn updates and summary updates.
         sql = """
             SELECT
-                t.conversation_id AS conversation_id,
-                COUNT(t.id) AS turn_count,
-                MAX(t.created_at) AS last_turn_at,
-                CASE WHEN s.conversation_id IS NULL THEN 0 ELSE 1 END AS has_summary
-            FROM conversation_turns t
-            LEFT JOIN conversation_summaries s
-                ON s.conversation_id = t.conversation_id
-            GROUP BY t.conversation_id
-            ORDER BY MAX(t.created_at) DESC
+                conversation_id,
+                SUM(turn_count) AS turn_count,
+                MAX(has_summary) AS has_summary,
+                MAX(last_at) AS last_at
+            FROM (
+                SELECT
+                    conversation_id,
+                    COUNT(*) AS turn_count,
+                    0 AS has_summary,
+                    MAX(created_at) AS last_at
+                FROM conversation_turns
+                GROUP BY conversation_id
+                UNION ALL
+                SELECT
+                    conversation_id,
+                    0 AS turn_count,
+                    1 AS has_summary,
+                    updated_at AS last_at
+                FROM conversation_summaries
+            )
+            GROUP BY conversation_id
+            ORDER BY MAX(last_at) DESC
         """
         with self._lock:
             rows = self._conn.execute(sql).fetchall()
@@ -210,7 +230,7 @@ class SQLiteConversationStore:
                 conversation_id=row["conversation_id"],
                 turn_count=row["turn_count"],
                 has_summary=bool(row["has_summary"]),
-                last_updated_at=row["last_turn_at"],
+                last_updated_at=row["last_at"],
             )
             for row in rows
         ]

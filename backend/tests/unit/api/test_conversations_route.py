@@ -124,3 +124,20 @@ async def test_detail_returns_200_with_null_summary_when_only_turns_exist(
     body = resp.json()
     assert body["summary"] is None
     assert len(body["turns"]) == 1
+
+
+async def test_list_and_detail_agree_on_summary_only_conversation(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    """Regression: the list endpoint previously dropped summary-only rows
+    while detail returned 200 for them. Pin that they now agree -- both
+    surfaces report the same conversation as existing."""
+    await store.upsert_summary("summary-only-conv", "all of it", 0)
+
+    list_resp = await client.get("/api/conversations")
+    detail_resp = await client.get("/api/conversations/summary-only-conv")
+
+    list_ids = [row["conversation_id"] for row in list_resp.json()]
+    assert "summary-only-conv" in list_ids
+    assert detail_resp.status_code == 200
+    assert detail_resp.json()["summary"] == "all of it"

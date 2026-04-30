@@ -250,6 +250,27 @@ async def test_list_conversations_returns_empty_when_no_turns(
     assert overviews == []
 
 
+async def test_list_conversations_includes_summary_only_rows(
+    store: SQLiteConversationStore,
+):
+    """A conversation that exists only as a summary row (no turns currently
+    survive past the boundary) must still appear in the list. Otherwise
+    the detail endpoint and the list endpoint disagree about what counts
+    as an existing conversation."""
+    # Construct a summary-only state by upserting a summary without
+    # appending any post-boundary turns.
+    await store.upsert_summary("summary-only-conv", "the only summary", 0)
+
+    overviews = await store.list_conversations()
+
+    assert len(overviews) == 1
+    only = overviews[0]
+    assert only.conversation_id == "summary-only-conv"
+    assert only.turn_count == 0
+    assert only.has_summary is True
+    assert only.last_updated_at is not None  # the summary's updated_at
+
+
 async def test_summary_is_isolated_per_conversation(store: SQLiteConversationStore):
     """Two conversations' summaries do not interfere with each other."""
     await store.upsert_summary("conv-A", "alpha summary", 0)
