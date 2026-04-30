@@ -23,7 +23,8 @@ from app.api.dependencies import (
 )
 from app.core.graph.graph import _resolve_llm, build_graph
 from app.core.graph.state import GraphState
-from app.core.operations.conversation_memory import load_with_summary
+from app.core.models.types import TraceEntry
+from app.core.operations.conversation_memory import MemoryView, load_with_summary
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,22 @@ class ChatResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _memory_trace(memory: MemoryView, duration_ms: float) -> TraceEntry:
+    """Build a synthetic trace entry recording what happened during memory
+    load. Memory runs OUTSIDE the LangGraph graph (before it executes), but
+    we project it into the trace so the UI's TraceView can show it
+    alongside graph nodes for a unified observability surface."""
+    return TraceEntry(
+        node="memory_load",
+        duration_ms=duration_ms,
+        data={
+            "history_turns": len(memory.recent),
+            "summary_present": memory.summary is not None,
+            "summarisation_triggered": memory.summarised_this_load,
+        },
+    )
 
 
 def _state_to_response(state: GraphState, conversation_id: str) -> ChatResponse:
@@ -139,6 +156,7 @@ async def chat_endpoint(
     # post-summary tail crosses the threshold; that's the lazy-on-load
     # trigger documented in conversation_memory.py.
     summariser_llm = _resolve_llm(agents_config.summariser, llms, system_config.llm.provider)
+    memory_start = time.monotonic()
     memory = await load_with_summary(
         conversation_id,
         reader=conversation_reader,
@@ -146,6 +164,7 @@ async def chat_endpoint(
         llm=summariser_llm,
         config=agents_config.summariser,
     )
+    memory_ms = (time.monotonic() - memory_start) * 1000
 
     initial_state = GraphState(
         query=body.query,
@@ -153,6 +172,7 @@ async def chat_endpoint(
         conversation_id=conversation_id,
         history=memory.recent,
         conversation_summary=memory.summary,
+        execution_trace=[_memory_trace(memory, memory_ms)],
     )
 
     result = await graph.ainvoke(initial_state)
@@ -204,6 +224,7 @@ async def chat_stream_endpoint(
 
     conversation_id = body.conversation_id or str(uuid.uuid4())
     summariser_llm = _resolve_llm(agents_config.summariser, llms, system_config.llm.provider)
+    memory_start = time.monotonic()
     memory = await load_with_summary(
         conversation_id,
         reader=conversation_reader,
@@ -211,6 +232,7 @@ async def chat_stream_endpoint(
         llm=summariser_llm,
         config=agents_config.summariser,
     )
+    memory_ms = (time.monotonic() - memory_start) * 1000
 
     initial_state = GraphState(
         query=body.query,
@@ -218,6 +240,7 @@ async def chat_stream_endpoint(
         conversation_id=conversation_id,
         history=memory.recent,
         conversation_summary=memory.summary,
+        execution_trace=[_memory_trace(memory, memory_ms)],
     )
 
     async def event_generator():

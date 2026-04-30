@@ -9,6 +9,7 @@ import type {
   ChatRequest,
   ChatResponse,
   CollectionStats,
+  ConversationDetailOut,
   CreateCollectionRequest,
   DocumentOut,
   IngestResponse,
@@ -163,5 +164,17 @@ export async function listDocuments(
   });
   return request<DocumentOut[]>(
     `/api/collections/${encodeURIComponent(collection)}/documents?${params}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Conversations (debug/introspection)
+// ---------------------------------------------------------------------------
+
+export async function getConversation(
+  conversationId: string,
+): Promise<ConversationDetailOut> {
+  return request<ConversationDetailOut>(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
   );
 }

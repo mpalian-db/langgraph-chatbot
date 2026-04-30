@@ -97,6 +97,28 @@ export type StreamEvent =
   | StreamEventResult;
 
 // ---------------------------------------------------------------------------
+// Conversations (debug/introspection)
+// ---------------------------------------------------------------------------
+
+export interface ConversationOverviewOut {
+  conversation_id: string;
+  turn_count: number;
+  has_summary: boolean;
+  last_updated_at: number | null;
+}
+
+export interface TurnOut {
+  role: string;
+  content: string;
+}
+
+export interface ConversationDetailOut {
+  conversation_id: string;
+  summary: string | null;
+  turns: TurnOut[];
+}
+
+// ---------------------------------------------------------------------------
 // UI-level types (not from backend)
 // ---------------------------------------------------------------------------
 

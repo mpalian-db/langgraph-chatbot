@@ -281,6 +281,50 @@ async def test_stream_endpoint_persists_turn_pair_atomically(
 # ---------------------------------------------------------------------------
 
 
+async def test_chat_response_trace_includes_memory_load_entry(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    """The chat route emits a `memory_load` trace entry recording history
+    size, summary presence, and whether summarisation triggered. This
+    surface lets the frontend show what happened during memory load
+    alongside the LangGraph node trace -- a unified observability view."""
+    # Two-turn warm conversation: one prior round persisted.
+    await store.append("trace-conv", "user", "old user")
+    await store.append("trace-conv", "assistant", "old assistant")
+
+    resp = await client.post("/api/chat", json={"query": "next", "conversation_id": "trace-conv"})
+    assert resp.status_code == 200
+
+    trace = resp.json()["trace"]
+    memory_entries = [t for t in trace if t["node"] == "memory_load"]
+    assert len(memory_entries) == 1
+    entry = memory_entries[0]
+    assert entry["data"]["history_turns"] == 2
+    assert entry["data"]["summary_present"] is False
+    assert entry["data"]["summarisation_triggered"] is False
+
+
+async def test_chat_response_trace_records_summarisation_trigger(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    """When this load triggers summarisation, the trace entry must reflect
+    it -- otherwise the operator can't tell from the response whether the
+    chat round paid the summariser cost."""
+    cid = "trace-summary"
+    for i in range(25):
+        role = "user" if i % 2 == 0 else "assistant"
+        await store.append(cid, role, f"seed {i}")
+
+    resp = await client.post("/api/chat", json={"query": "trigger summary", "conversation_id": cid})
+    assert resp.status_code == 200
+
+    trace = resp.json()["trace"]
+    [memory_entry] = [t for t in trace if t["node"] == "memory_load"]
+    assert memory_entry["data"]["summarisation_triggered"] is True
+    assert memory_entry["data"]["summary_present"] is True
+    assert memory_entry["data"]["history_turns"] == 10  # keep_recent default
+
+
 async def test_summariser_triggers_when_history_crosses_threshold(
     client: AsyncClient, chat_llm: AsyncMock, store: SQLiteConversationStore
 ):

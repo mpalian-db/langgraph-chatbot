@@ -23,10 +23,16 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MemoryView:
     """What the chat route hands to the graph: a synthesised summary string
-    (or None) plus the verbatim recent turns."""
+    (or None) plus the verbatim recent turns.
+
+    `summarised_this_load` is True when this particular load triggered a
+    fresh summarisation round (LLM call + persisted summary). Used for
+    trace/observability so the operator can see when a chat round paid the
+    summarisation cost vs. when it just read the existing summary."""
 
     summary: str | None
     recent: list[Turn]
+    summarised_this_load: bool = False
 
 
 async def load_with_summary(
@@ -50,7 +56,7 @@ async def load_with_summary(
 
     if not config.enabled or len(all_recent) <= config.summarise_threshold:
         # Below threshold: hand back what we have, no LLM call.
-        return MemoryView(summary=summary, recent=_strip(all_recent))
+        return MemoryView(summary=summary, recent=_strip(all_recent), summarised_this_load=False)
 
     # Above threshold: summarise everything except the last `keep_recent`.
     # Defensive guard: even though SummariserConfig's validator enforces
@@ -66,7 +72,7 @@ async def load_with_summary(
             config.summarise_threshold,
             len(all_recent),
         )
-        return MemoryView(summary=summary, recent=_strip(all_recent))
+        return MemoryView(summary=summary, recent=_strip(all_recent), summarised_this_load=False)
 
     keep = all_recent[-config.keep_recent :]
     # Best-effort summarisation: if the LLM call or the storage write fails,
@@ -89,9 +95,9 @@ async def load_with_summary(
             conversation_id,
             exc_info=True,
         )
-        return MemoryView(summary=summary, recent=_strip(all_recent))
+        return MemoryView(summary=summary, recent=_strip(all_recent), summarised_this_load=False)
 
-    return MemoryView(summary=new_summary_text, recent=_strip(keep))
+    return MemoryView(summary=new_summary_text, recent=_strip(keep), summarised_this_load=True)
 
 
 async def _summarise(

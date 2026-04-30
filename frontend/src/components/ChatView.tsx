@@ -12,9 +12,9 @@ import {
   useState,
 } from "react";
 import { useChat } from "../hooks/useChat";
-import { listCollections } from "../api/client";
+import { getConversation, listCollections } from "../api/client";
 import TraceView from "./TraceView";
-import type { CitationOut, Message } from "../api/types";
+import type { CitationOut, ConversationDetailOut, Message } from "../api/types";
 
 // ---------------------------------------------------------------------------
 // Route badge colour mapping
@@ -122,6 +122,8 @@ export default function ChatView() {
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
+  const [conversationDetail, setConversationDetail] =
+    useState<ConversationDetailOut | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch collections on mount so the user can scope queries.
@@ -132,6 +134,29 @@ export default function ChatView() {
         // Backend may not be running -- leave empty.
       });
   }, []);
+
+  // Whenever the conversationId changes (or the latest message lands),
+  // refresh the introspection view so the header chip can show turn count
+  // and summary status. Refetching after each new message keeps the chip
+  // current as the user chats. We skip when there's no conversation yet.
+  useEffect(() => {
+    if (!conversationId) {
+      setConversationDetail(null);
+      return;
+    }
+    let cancelled = false;
+    getConversation(conversationId)
+      .then((detail) => {
+        if (!cancelled) setConversationDetail(detail);
+      })
+      .catch(() => {
+        // Endpoint may not be reachable; degrade silently rather than
+        // breaking the chat UI for a debug surface.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, messages.length]);
 
   // Auto-scroll to newest message.
   useEffect(() => {
@@ -214,12 +239,34 @@ export default function ChatView() {
             actually started -- no chrome on the empty state. */}
         {conversationId && (
           <div className="flex items-center justify-between border-b border-gray-700 bg-gray-900/40 px-4 py-2 text-xs">
-            <span className="text-gray-500">
-              Conversation{" "}
-              <code className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-gray-400">
-                {conversationId.slice(0, 8)}
-              </code>
-            </span>
+            <div className="flex items-center gap-3 text-gray-500">
+              <span>
+                Conversation{" "}
+                <code className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-gray-400">
+                  {conversationId.slice(0, 8)}
+                </code>
+              </span>
+              {conversationDetail && (
+                <>
+                  <span className="text-gray-600">·</span>
+                  <span title={`turn count for ${conversationId}`}>
+                    {conversationDetail.turns.length}{" "}
+                    turn{conversationDetail.turns.length !== 1 && "s"}
+                  </span>
+                  {conversationDetail.summary && (
+                    <>
+                      <span className="text-gray-600">·</span>
+                      <span
+                        title="A rolling summary has been generated for older turns"
+                        className="rounded bg-indigo-900/40 px-1.5 py-0.5 text-indigo-300"
+                      >
+                        summarised
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
             <button
               type="button"
               onClick={clear}
