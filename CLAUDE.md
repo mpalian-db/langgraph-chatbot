@@ -30,11 +30,12 @@ Full technical design spec: `docs/superpowers/specs/2026-04-10-multi-agent-rag-c
 ```bash
 just dev            # start Qdrant + Langfuse + uvicorn + vite dev
 just dev-full       # as above, plus n8n
-just test           # run unit tests only
-just test-all       # run unit + integration tests
+just test           # run backend unit tests only
+just test-all       # run backend unit + integration tests
 just test-one FILE  # run a single test file
-just lint           # ruff check + ruff format --check
-just format         # ruff format
+just lint           # ruff + ruff format --check + mypy (matches CI)
+just format         # ruff format + ruff --fix
+just check          # everything CI runs: backend lint+tests, frontend tsc+test+build
 ```
 
 Integration tests require Qdrant (Docker) and Ollama running locally, and are gated behind a pytest marker. The frontend runs via `vite dev` outside Docker (not containerised -- hot reload is faster).
