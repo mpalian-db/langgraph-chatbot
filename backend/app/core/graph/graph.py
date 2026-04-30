@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Hashable, Mapping
 
 from langgraph.graph import END, StateGraph
 
-from app.core.config.models import AgentsConfig
+from app.core.config.models import AgentsConfig, ProviderOverride
 from app.core.graph.nodes import (
     answer_generation,
     chat_agent,
@@ -23,6 +23,15 @@ from app.ports.embedding import EmbeddingPort
 from app.ports.llm import LLMPort
 from app.ports.vectorstore import CollectionPort, VectorStorePort
 from app.ports.worklog import WorklogPort
+
+
+class _HasProvider(Protocol):
+    """Structural type covering every agent config that uses an LLM. Pydantic
+    models duck-type into this without inheritance, so the validation walker
+    can iterate a heterogeneous dict and access `provider` without mypy
+    complaining about the common ancestor lacking the field."""
+
+    provider: ProviderOverride
 
 
 def validate_llm_providers(
@@ -46,7 +55,7 @@ def validate_llm_providers(
     WorklogPort is configured, so validating its provider when worklog is
     disabled would falsely crash startup on an unused config."""
     skip = skip_agents or set()
-    llm_using = {
+    llm_using: dict[str, _HasProvider] = {
         "router": agents_config.router,
         "chat_agent": agents_config.chat_agent,
         "answer_generation": agents_config.answer_generation,
