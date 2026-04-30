@@ -260,6 +260,46 @@ async def test_stream_endpoint_returns_conversation_id_in_result_event(
     assert result_events[0]["data"]["conversation_id"] == "stream-1"
 
 
+async def test_stream_emits_memory_load_events_before_router(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    """Pin the TTFB contract: the very first events on the wire are the
+    memory_load start/end pair, BEFORE any LangGraph node events. This
+    means the client never sees a silent gap during the summariser LLM
+    call -- it sees `node_start: memory_load` immediately."""
+    import json
+
+    await store.append("ttfb-conv", "user", "old user")
+    await store.append("ttfb-conv", "assistant", "old assistant")
+
+    resp = await client.post(
+        "/api/chat/stream",
+        json={"query": "follow up", "conversation_id": "ttfb-conv"},
+    )
+    assert resp.status_code == 200
+
+    events = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    nodes_in_order = [e.get("node") for e in events if "node" in e]
+
+    # Memory_load start + end are the very first wire events. Anything that
+    # comes after them is a graph node event (LangGraph itself emits a
+    # top-level "LangGraph" wrapper event we don't filter out, but it
+    # follows memory_load -- the TTFB invariant).
+    assert nodes_in_order[0] == "memory_load"
+    assert nodes_in_order[1] == "memory_load"
+    assert any(n not in ("memory_load",) for n in nodes_in_order[2:]), (
+        "expected at least one graph-side event after memory_load"
+    )
+
+    # The memory_load node_end carries the same data shape the trace will.
+    [memory_end] = [
+        e for e in events if e.get("event") == "node_end" and e.get("node") == "memory_load"
+    ]
+    assert memory_end["data"]["history_turns"] == 2
+    assert memory_end["data"]["summary_present"] is False
+    assert memory_end["data"]["summarisation_triggered"] is False
+
+
 async def test_stream_endpoint_preserves_memory_load_trace_entry(
     client: AsyncClient, store: SQLiteConversationStore
 ):

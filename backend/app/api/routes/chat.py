@@ -208,7 +208,15 @@ async def chat_stream_endpoint(
     conversation_reader: ConversationReaderDep,
     conversation_writer: ConversationWriterDep,
 ) -> StreamingResponse:
-    """Stream graph execution events as newline-delimited JSON (NDJSON)."""
+    """Stream graph execution events as newline-delimited JSON (NDJSON).
+
+    Memory load runs INSIDE the generator so the first event reaches the
+    client immediately; otherwise a 2-5s summariser LLM call would block
+    the entire stream open and the user would see silence. The memory_load
+    node is bracketed by node_start / node_end events that mirror the
+    LangGraph nodes' shape, so the frontend's existing trace-display
+    logic doesn't need to know it isn't a real graph node.
+    """
     import json
     import uuid
 
@@ -224,26 +232,51 @@ async def chat_stream_endpoint(
 
     conversation_id = body.conversation_id or str(uuid.uuid4())
     summariser_llm = _resolve_llm(agents_config.summariser, llms, system_config.llm.provider)
-    memory_start = time.monotonic()
-    memory = await load_with_summary(
-        conversation_id,
-        reader=conversation_reader,
-        writer=conversation_writer,
-        llm=summariser_llm,
-        config=agents_config.summariser,
-    )
-    memory_ms = (time.monotonic() - memory_start) * 1000
-
-    initial_state = GraphState(
-        query=body.query,
-        collection=body.collection,
-        conversation_id=conversation_id,
-        history=memory.recent,
-        conversation_summary=memory.summary,
-        execution_trace=[_memory_trace(memory, memory_ms)],
-    )
 
     async def event_generator():
+        # First event: memory_load is starting. Hits the wire immediately
+        # so the client knows the request is alive even if summarisation
+        # takes a moment.
+        yield json.dumps({"event": "node_start", "node": "memory_load"}) + "\n"
+
+        memory_start = time.monotonic()
+        memory = await load_with_summary(
+            conversation_id,
+            reader=conversation_reader,
+            writer=conversation_writer,
+            llm=summariser_llm,
+            config=agents_config.summariser,
+        )
+        memory_ms = (time.monotonic() - memory_start) * 1000
+
+        # Mirror the on_chain_end shape of real nodes so the frontend can
+        # treat memory_load uniformly. Carries the same data the trace
+        # entry will -- redundant on the wire but useful for live UIs that
+        # don't wait for the result event before showing memory state.
+        yield (
+            json.dumps(
+                {
+                    "event": "node_end",
+                    "node": "memory_load",
+                    "data": {
+                        "history_turns": len(memory.recent),
+                        "summary_present": memory.summary is not None,
+                        "summarisation_triggered": memory.summarised_this_load,
+                    },
+                }
+            )
+            + "\n"
+        )
+
+        initial_state = GraphState(
+            query=body.query,
+            collection=body.collection,
+            conversation_id=conversation_id,
+            history=memory.recent,
+            conversation_summary=memory.summary,
+            execution_trace=[_memory_trace(memory, memory_ms)],
+        )
+
         final_state = None
         async for event in graph.astream_events(initial_state, version="v2"):
             kind = event.get("event", "")
