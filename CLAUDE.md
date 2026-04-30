@@ -71,10 +71,25 @@ TOML config is injected at graph construction time via `functools.partial`.
 
 | Node | Default model |
 |---|---|
-| Router, Chat agent, Tool agent | `llama3.2:3b` |
+| Router, Chat agent, Tool agent, Worklog, Summariser | `llama3.2:3b` |
 | Answer generation, Verifier | `llama3.1:8b` |
 
 Override by setting `model = "..."` in `config/agents.toml`. Anthropic models (`claude-haiku-4-5-20251001`, `claude-sonnet-4-6-20250514`) work when `llm.provider = "anthropic"`.
+
+### Per-node LLM provider override
+
+Each agent section in `agents.toml` may set `provider = "ollama" | "anthropic"` to use a different LLM than the system default. The verifier's support_analysis check, in particular, benefits from Anthropic's reliable structured output. The system builds a registry (`get_llm_registry`) of available providers; `_resolve_llm` in `graph.py` picks the right port per node. Misconfiguration (e.g. requesting `anthropic` without `ANTHROPIC_API_KEY`) fails at app startup via `validate_llm_providers`. See `docs/adrs/0001-per-node-llm-provider.md`.
+
+### Conversation memory
+
+Multi-turn chat is backed by a SQLite store (`SQLiteConversationStore`) implementing `ConversationReaderPort` + `ConversationWriterPort`. Each chat round persists `(user, assistant)` atomically via `append_pair`. When the unsummarised tail crosses `[summariser].summarise_threshold` turns, `load_with_summary` (in `app.core.operations.conversation_memory`) folds the older slice into a rolling summary, keeping the last `keep_recent` turns verbatim. Summarisation is best-effort: an LLM failure falls back to unsummarised history rather than 500'ing the chat. See `docs/adrs/0002-conversation-memory.md`.
+
+### Read-only debug endpoints
+
+- `GET /api/conversations` -- list every known conversation with metadata (turn_count, has_summary, last_updated_at).
+- `GET /api/conversations/{id}` -- summary + post-boundary turns, or 404 when truly unknown.
+- `GET /api/collections/{name}/documents/{id}` -- single chunk by id, 404 if not present.
+- `DELETE /api/collections/{name}/documents/{id}` -- 204 idempotent.
 
 ### Verifier outcomes
 
@@ -92,7 +107,9 @@ pytest with pytest-asyncio. Unit tests mock all ports and test core logic in iso
 
 - British English in all documentation and comments.
 - No emojis anywhere (docs, commits, comments, output).
-- Keep README concise; detailed docs go under `docs/`.
+- Keep README concise; detailed docs go under `docs/`. Architectural decisions live in `docs/adrs/`.
 - Split ports into single-concern Protocols. Never aggregate read, write, and mutation behind one interface.
 - Node functions are pure async; TOML config is injected at construction time via `functools.partial`, never captured from globals.
 - Isolate side effects (LLM API calls, vector DB, file I/O) at the boundaries behind ports.
+- Cross-cutting concerns (e.g. tenant isolation in the Vectorize adapter, cancellation in the streaming chat hook) belong at the adapter or hook boundary, not in route handlers.
+- `agents_config` is `lru_cache`d in `dependencies.py` -- never mutate it in `build_graph`. Use `model_copy(update=...)` for per-request derivations.
