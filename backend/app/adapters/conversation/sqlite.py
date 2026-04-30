@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from app.ports.conversation import Role, StoredTurn, Turn
+from app.ports.conversation import ConversationOverview, Role, StoredTurn, Turn
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversation_turns (
@@ -181,6 +181,39 @@ class SQLiteConversationStore:
             StoredTurn(id=row["id"], role=row["role"], content=row["content"]) for row in turn_rows
         ]
         return summary_text, turns
+
+    async def list_conversations(self) -> list[ConversationOverview]:
+        return await asyncio.to_thread(self._list_conversations_sync)
+
+    def _list_conversations_sync(self) -> list[ConversationOverview]:
+        # One query gathers per-conversation aggregates (count, max created_at)
+        # and joins the summary presence flag. Most-recently-active first.
+        # COALESCE pulls the summary's updated_at when no turns exist for the
+        # conversation but a summary row does -- a defensive case that
+        # shouldn't occur in normal usage but ordering still needs a value.
+        sql = """
+            SELECT
+                t.conversation_id AS conversation_id,
+                COUNT(t.id) AS turn_count,
+                MAX(t.created_at) AS last_turn_at,
+                CASE WHEN s.conversation_id IS NULL THEN 0 ELSE 1 END AS has_summary
+            FROM conversation_turns t
+            LEFT JOIN conversation_summaries s
+                ON s.conversation_id = t.conversation_id
+            GROUP BY t.conversation_id
+            ORDER BY MAX(t.created_at) DESC
+        """
+        with self._lock:
+            rows = self._conn.execute(sql).fetchall()
+        return [
+            ConversationOverview(
+                conversation_id=row["conversation_id"],
+                turn_count=row["turn_count"],
+                has_summary=bool(row["has_summary"]),
+                last_updated_at=row["last_turn_at"],
+            )
+            for row in rows
+        ]
 
     async def upsert_summary(
         self,

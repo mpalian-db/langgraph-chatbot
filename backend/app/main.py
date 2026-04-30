@@ -14,7 +14,15 @@ from app.api.dependencies import (
     get_llm_registry,
     get_system_config,
 )
-from app.api.routes import chat, collections, documents, notion, system, webhooks
+from app.api.routes import (
+    chat,
+    collections,
+    conversations,
+    documents,
+    notion,
+    system,
+    webhooks,
+)
 from app.core.graph.graph import validate_llm_providers
 
 logger = logging.getLogger(__name__)
@@ -118,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api")
     app.include_router(collections.router, prefix="/api")
     app.include_router(documents.router, prefix="/api")
+    app.include_router(conversations.router, prefix="/api")
     app.include_router(system.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
     app.include_router(notion.router, prefix="/api")

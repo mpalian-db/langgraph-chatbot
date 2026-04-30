@@ -205,6 +205,51 @@ async def test_load_summary_and_turns_returns_only_post_boundary_turns(
     ]
 
 
+async def test_list_conversations_returns_overview_with_metadata(
+    store: SQLiteConversationStore,
+):
+    """The list endpoint needs lightweight aggregate data: turn_count,
+    has_summary, last_updated_at -- without pulling turn content."""
+    await store.append("conv-A", "user", "alpha-1")
+    await store.append("conv-A", "assistant", "alpha-2")
+    await store.append("conv-B", "user", "bravo-only")
+    await store.upsert_summary("conv-A", "summary of alpha", 0)
+
+    overviews = await store.list_conversations()
+
+    assert len(overviews) == 2
+    by_id = {o.conversation_id: o for o in overviews}
+    assert by_id["conv-A"].turn_count == 2
+    assert by_id["conv-A"].has_summary is True
+    assert by_id["conv-A"].last_updated_at is not None
+    assert by_id["conv-B"].turn_count == 1
+    assert by_id["conv-B"].has_summary is False
+
+
+async def test_list_conversations_orders_most_recent_first(
+    store: SQLiteConversationStore,
+):
+    """Ordering pins the debug-tooling expectation: the conversation a
+    developer last touched should appear at the top of the list."""
+    import time as _time
+
+    await store.append("older", "user", "x")
+    _time.sleep(0.01)  # SQLite created_at is a real-number epoch; force ordering
+    await store.append("newer", "user", "y")
+
+    overviews = await store.list_conversations()
+
+    assert overviews[0].conversation_id == "newer"
+    assert overviews[1].conversation_id == "older"
+
+
+async def test_list_conversations_returns_empty_when_no_turns(
+    store: SQLiteConversationStore,
+):
+    overviews = await store.list_conversations()
+    assert overviews == []
+
+
 async def test_summary_is_isolated_per_conversation(store: SQLiteConversationStore):
     """Two conversations' summaries do not interfere with each other."""
     await store.upsert_summary("conv-A", "alpha summary", 0)

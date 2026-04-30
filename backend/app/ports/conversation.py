@@ -35,6 +35,19 @@ class StoredTurn:
     content: str
 
 
+@dataclass
+class ConversationOverview:
+    """Lightweight conversation metadata for the list endpoint.
+
+    Excludes turn content so a "list all conversations" call stays cheap
+    even when individual conversations have hundreds of turns."""
+
+    conversation_id: str
+    turn_count: int
+    has_summary: bool
+    last_updated_at: float | None  # epoch seconds, None when no turns yet
+
+
 @runtime_checkable
 class ConversationReaderPort(Protocol):
     async def load(self, conversation_id: str, limit: int = 20) -> list[Turn]:
@@ -55,6 +68,15 @@ class ConversationReaderPort(Protocol):
         if no summary has been recorded yet; the second is every turn whose
         id is strictly greater than the summary's boundary id (or all turns
         if no summary exists)."""
+        ...
+
+    async def list_conversations(self) -> list[ConversationOverview]:
+        """Return every known conversation as a lightweight overview row,
+        most-recently-active first.
+
+        Used by debug/inspection tooling. Implementations should return
+        cheap metadata only -- no turn content -- so the result remains
+        small even when conversations are long."""
         ...
 
 
