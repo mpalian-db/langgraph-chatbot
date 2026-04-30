@@ -104,4 +104,25 @@ describe("TraceView", () => {
     await user.click(screen.getByRole("button"));
     expect(screen.getByText("—")).toBeInTheDocument();
   });
+
+  it("renders duration bars proportional to the slowest node", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <TraceView
+        entries={[
+          entry("router", 50),
+          entry("memory_load", 200), // 4x router -- the slowest
+        ]}
+      />,
+    );
+    await user.click(screen.getByRole("button"));
+
+    // Find the inner bar element by aria-hidden + style. Each row has one.
+    const bars = container.querySelectorAll('[aria-hidden="true"]');
+    expect(bars).toHaveLength(2);
+
+    // The first row (router) is at 50/200 = 25%; the second (memory_load) at 100%.
+    expect((bars[0] as HTMLElement).style.width).toBe("25%");
+    expect((bars[1] as HTMLElement).style.width).toBe("100%");
+  });
 });
