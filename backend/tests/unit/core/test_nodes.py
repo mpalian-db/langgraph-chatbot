@@ -122,6 +122,41 @@ async def test_chat_agent_omits_history_when_empty(mock_llm):
 
 
 @pytest.mark.asyncio
+async def test_chat_agent_prepends_conversation_summary_to_system_prompt(mock_llm):
+    """The summariser may compress distant turns into a rolling summary.
+    chat_agent must surface that summary to the model as system-level prior
+    context, otherwise the compression silently strips information from
+    the conversation."""
+    state = GraphState(
+        query="what about the second one?",
+        route="chat",
+        history=[],
+        conversation_summary="Earlier: user listed 3 items A, B, C; assistant explained A.",
+    )
+    config = ChatAgentConfig(system_prompt="You are a helpful assistant.")
+
+    await chat_agent.run(state, config=config, llm=mock_llm)
+
+    system_arg = mock_llm.complete.call_args.kwargs["system"]
+    assert "Earlier: user listed 3 items" in system_arg
+    assert "You are a helpful assistant." in system_arg
+    # Summary must appear BEFORE the system prompt so model reads context first.
+    assert system_arg.index("Earlier:") < system_arg.index("You are a helpful")
+
+
+@pytest.mark.asyncio
+async def test_chat_agent_uses_unmodified_system_prompt_when_no_summary(mock_llm):
+    """No summary -> system prompt is exactly what config provides; no
+    leading "Summary of earlier..." preamble that would confuse the model."""
+    state = GraphState(query="hi", history=[], conversation_summary=None)
+    config = ChatAgentConfig(system_prompt="You are a helpful assistant.")
+
+    await chat_agent.run(state, config=config, llm=mock_llm)
+
+    assert mock_llm.complete.call_args.kwargs["system"] == "You are a helpful assistant."
+
+
+@pytest.mark.asyncio
 async def test_retrieval_searches_vectorstore(mock_vectorstore, mock_embedding):
     state = GraphState(query="What is LangGraph?", route="rag")
     config = RetrievalConfig(top_k=5, score_threshold=0.7, default_collection="docs")

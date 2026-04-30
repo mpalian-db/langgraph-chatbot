@@ -53,6 +53,7 @@ def validate_llm_providers(
         "verifier": agents_config.verifier,
         "tool_agent": agents_config.tool_agent,
         "worklog_agent": agents_config.worklog_agent,
+        "summariser": agents_config.summariser,
     }
     failures: list[str] = []
     for name, cfg in llm_using.items():

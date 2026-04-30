@@ -139,6 +139,33 @@ class ToolAgentConfig(_StrictModel):
     max_tool_calls: int = 5
 
 
+class SummariserConfig(_StrictModel):
+    """Conversation memory summariser.
+
+    Triggered lazily on read when the unsummarised tail exceeds
+    `summarise_threshold` turns. Folds everything except the last
+    `keep_recent` turns into a rolling summary, leaving the recent window
+    verbatim for high-fidelity context."""
+
+    enabled: bool = True
+    model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
+    # Number of trailing turns kept verbatim (not folded into the summary).
+    keep_recent: int = 10
+    # When the unsummarised tail exceeds this length, summarisation triggers
+    # on the next load. Setting equal to keep_recent disables summarisation
+    # in practice (nothing would ever be older than the keep window).
+    summarise_threshold: int = 20
+    prompt: str = (
+        "Summarise the following conversation between a user and an "
+        "assistant. Preserve facts, decisions, and context that future "
+        "turns may need. Be concise but do not omit names, numbers, or "
+        "specifics. If a prior summary is provided, integrate the new "
+        "turns into it rather than restarting."
+    )
+    max_tokens: int = 512
+
+
 class WorklogAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
@@ -160,3 +187,4 @@ class AgentsConfig(_StrictModel):
     verifier: VerifierConfig = VerifierConfig()
     tool_agent: ToolAgentConfig = ToolAgentConfig()
     worklog_agent: WorklogAgentConfig = WorklogAgentConfig()
+    summariser: SummariserConfig = SummariserConfig()

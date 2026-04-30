@@ -133,6 +133,90 @@ async def test_append_pair_persists_both_rows_in_order(store: SQLiteConversation
     assert [t.content for t in turns] == ["user query", "assistant reply"]
 
 
+async def test_load_summary_and_turns_returns_none_summary_for_fresh_conversation(
+    store: SQLiteConversationStore,
+):
+    """No summary exists yet -- caller gets None and all turns since the
+    beginning of the conversation."""
+    await store.append("conv-1", "user", "first")
+    await store.append("conv-1", "assistant", "second")
+
+    summary, turns = await store.load_summary_and_turns("conv-1")
+
+    assert summary is None
+    assert [(t.role, t.content) for t in turns] == [
+        ("user", "first"),
+        ("assistant", "second"),
+    ]
+    # Stored turns expose ids -- needed by the summariser to mark a boundary.
+    assert all(t.id > 0 for t in turns)
+    assert turns[0].id < turns[1].id
+
+
+async def test_upsert_summary_creates_then_replaces(store: SQLiteConversationStore):
+    """First upsert creates the row; the second replaces it. Boundary id
+    moves forward as more turns get folded into the summary."""
+    await store.append("conv-1", "user", "old")
+    _, turns = await store.load_summary_and_turns("conv-1")
+    first_boundary = turns[-1].id
+
+    await store.upsert_summary("conv-1", "summary v1", first_boundary)
+
+    summary, after = await store.load_summary_and_turns("conv-1")
+    assert summary == "summary v1"
+    # Nothing past the boundary -- that "old" turn is now folded in.
+    assert after == []
+
+    # Add more turns; trigger a new summary that supersedes the first.
+    await store.append("conv-1", "user", "newer")
+    await store.append("conv-1", "assistant", "newest")
+    _, all_since = await store.load_summary_and_turns("conv-1")
+    second_boundary = all_since[-1].id
+
+    await store.upsert_summary("conv-1", "summary v2", second_boundary)
+
+    summary, after = await store.load_summary_and_turns("conv-1")
+    assert summary == "summary v2"
+    assert after == []
+
+
+async def test_load_summary_and_turns_returns_only_post_boundary_turns(
+    store: SQLiteConversationStore,
+):
+    """After summarisation, the summary boundary masks earlier turns from
+    the load. Only turns added AFTER the boundary should surface."""
+    await store.append("conv-1", "user", "old-1")
+    await store.append("conv-1", "assistant", "old-2")
+    _, before = await store.load_summary_and_turns("conv-1")
+    boundary = before[-1].id
+
+    await store.upsert_summary("conv-1", "summary of old", boundary)
+
+    # Now add fresh turns past the boundary.
+    await store.append("conv-1", "user", "new-1")
+    await store.append("conv-1", "assistant", "new-2")
+
+    summary, recent = await store.load_summary_and_turns("conv-1")
+
+    assert summary == "summary of old"
+    assert [(t.role, t.content) for t in recent] == [
+        ("user", "new-1"),
+        ("assistant", "new-2"),
+    ]
+
+
+async def test_summary_is_isolated_per_conversation(store: SQLiteConversationStore):
+    """Two conversations' summaries do not interfere with each other."""
+    await store.upsert_summary("conv-A", "alpha summary", 0)
+    await store.upsert_summary("conv-B", "bravo summary", 0)
+
+    a_summary, _ = await store.load_summary_and_turns("conv-A")
+    b_summary, _ = await store.load_summary_and_turns("conv-B")
+
+    assert a_summary == "alpha summary"
+    assert b_summary == "bravo summary"
+
+
 async def test_append_pair_is_atomic_on_failure(store: SQLiteConversationStore):
     """If the second insert fails, the first must be rolled back. Otherwise
     the conversation is left with an orphan user-without-reply row that

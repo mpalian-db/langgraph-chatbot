@@ -23,10 +23,21 @@ async def run(
     messages = [{"role": turn.role, "content": turn.content} for turn in state.history]
     messages.append({"role": "user", "content": state.query})
 
+    # When a rolling summary exists (conversation has been long enough to
+    # trigger compression), prepend it to the system prompt as recovered
+    # context. This gives the model access to facts and decisions from
+    # earlier turns that no longer survive in the verbatim history window.
+    system_prompt = config.system_prompt
+    if state.conversation_summary:
+        system_prompt = (
+            f"Summary of earlier conversation: {state.conversation_summary}\n\n"
+            f"{config.system_prompt}"
+        )
+
     response = await llm.complete(
         messages=messages,
         model=config.model,
-        system=config.system_prompt,
+        system=system_prompt,
         max_tokens=config.max_tokens,
     )
 

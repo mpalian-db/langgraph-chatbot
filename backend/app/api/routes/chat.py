@@ -21,8 +21,9 @@ from app.api.dependencies import (
     VectorStoreDep,
     WorklogDep,
 )
-from app.core.graph.graph import build_graph
+from app.core.graph.graph import _resolve_llm, build_graph
 from app.core.graph.state import GraphState
+from app.core.operations.conversation_memory import load_with_summary
 
 logger = logging.getLogger(__name__)
 
@@ -133,13 +134,25 @@ async def chat_endpoint(
 
     # Resolve conversation_id: client-supplied or server-generated.
     conversation_id = body.conversation_id or str(uuid.uuid4())
-    history = await conversation_reader.load(conversation_id)
+    # Pull the summary-aware view of memory so distant context survives
+    # compression. The summariser may issue an LLM call here when the
+    # post-summary tail crosses the threshold; that's the lazy-on-load
+    # trigger documented in conversation_memory.py.
+    summariser_llm = _resolve_llm(agents_config.summariser, llms, system_config.llm.provider)
+    memory = await load_with_summary(
+        conversation_id,
+        reader=conversation_reader,
+        writer=conversation_writer,
+        llm=summariser_llm,
+        config=agents_config.summariser,
+    )
 
     initial_state = GraphState(
         query=body.query,
         collection=body.collection,
         conversation_id=conversation_id,
-        history=history,
+        history=memory.recent,
+        conversation_summary=memory.summary,
     )
 
     result = await graph.ainvoke(initial_state)
@@ -190,13 +203,21 @@ async def chat_stream_endpoint(
     )
 
     conversation_id = body.conversation_id or str(uuid.uuid4())
-    history = await conversation_reader.load(conversation_id)
+    summariser_llm = _resolve_llm(agents_config.summariser, llms, system_config.llm.provider)
+    memory = await load_with_summary(
+        conversation_id,
+        reader=conversation_reader,
+        writer=conversation_writer,
+        llm=summariser_llm,
+        config=agents_config.summariser,
+    )
 
     initial_state = GraphState(
         query=body.query,
         collection=body.collection,
         conversation_id=conversation_id,
-        history=history,
+        history=memory.recent,
+        conversation_summary=memory.summary,
     )
 
     async def event_generator():

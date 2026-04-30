@@ -79,7 +79,10 @@ def test_app(store: SQLiteConversationStore, chat_llm: AsyncMock):
     # heuristic from silently collapsing into router.py's "default to chat"
     # fallback and masking a real regression.
     ROUTER_PROMPT_PREFIX = "You are a routing agent"
-    CHAT_PROMPT_PREFIX = "You are a helpful assistant"
+    # chat_agent may prepend "Summary of earlier conversation: ..." when a
+    # rolling summary exists, so match by substring rather than prefix.
+    CHAT_PROMPT_MARKER = "You are a helpful assistant"
+    SUMMARISER_PROMPT_PREFIX = "Summarise the following conversation"
 
     def _llm_side_effect(**kwargs):
         system = kwargs.get("system") or ""
@@ -90,7 +93,14 @@ def test_app(store: SQLiteConversationStore, chat_llm: AsyncMock):
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 5, "output_tokens": 1},
             }
-        if system.startswith(CHAT_PROMPT_PREFIX):
+        if system.startswith(SUMMARISER_PROMPT_PREFIX):
+            return {
+                "text": "MOCK ROLLED-UP SUMMARY",
+                "tool_use": [],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 200, "output_tokens": 30},
+            }
+        if CHAT_PROMPT_MARKER in system:
             # Echo the message count so tests can assert how much history
             # reached the chat agent.
             return {
@@ -100,19 +110,25 @@ def test_app(store: SQLiteConversationStore, chat_llm: AsyncMock):
                 "usage": {"input_tokens": 10, "output_tokens": 5},
             }
         msg = (
-            f"unexpected LLM call from a node that is neither router nor "
-            f"chat_agent. system prompt prefix: {system[:60]!r}"
+            f"unexpected LLM call from a node that is neither router, "
+            f"chat_agent, nor summariser. system prompt prefix: {system[:60]!r}"
         )
         raise AssertionError(msg)
 
     chat_llm.complete = AsyncMock(side_effect=_llm_side_effect)
 
-    # Use a realistic router prompt so the strict dispatch in `_llm_side_effect`
-    # can identify router-vs-chat-agent calls. The default AgentsConfig() has
-    # an empty router prompt which would defeat the dispatch.
+    # Use realistic prompts so the strict dispatch in `_llm_side_effect`
+    # can identify router-vs-chat-agent-vs-summariser calls. The default
+    # AgentsConfig() has an empty router prompt which would defeat the dispatch.
     agents_config = AgentsConfig()
     agents_config.router.prompt = "You are a routing agent. Pick chat, rag, or tool."
     agents_config.chat_agent.system_prompt = "You are a helpful assistant."
+    # The default SummariserConfig.prompt already starts with "Summarise the
+    # following conversation"; assigning it explicitly here makes the test
+    # robust against future default changes that might break the dispatch.
+    agents_config.summariser.prompt = (
+        "Summarise the following conversation between a user and an assistant."
+    )
 
     app.dependency_overrides[get_system_config] = lambda: SystemConfig()
     app.dependency_overrides[get_agents_config] = lambda: agents_config
@@ -258,3 +274,42 @@ async def test_stream_endpoint_persists_turn_pair_atomically(
     assert len(persisted) == 2
     assert persisted[0].role == "user" and persisted[0].content == "first stream"
     assert persisted[1].role == "assistant"
+
+
+# ---------------------------------------------------------------------------
+# Summarisation trigger via the route
+# ---------------------------------------------------------------------------
+
+
+async def test_summariser_triggers_when_history_crosses_threshold(
+    client: AsyncClient, chat_llm: AsyncMock, store: SQLiteConversationStore
+):
+    """End-to-end: seed a conversation with enough turns to cross the
+    summariser threshold, fire one more chat request, and assert that
+    a summary was persisted by the time the response returns.
+
+    This pins the lazy-on-load contract: summarisation runs as part of the
+    chat route's history load, transparently from the client's perspective."""
+    cid = "sum-conv-1"
+    # Seed 25 turns directly via the store so we don't pay the per-turn LLM
+    # cost via the route. Need > summarise_threshold (default 20) so the
+    # next chat-route call triggers the summariser.
+    for i in range(25):
+        role = "user" if i % 2 == 0 else "assistant"
+        await store.append(cid, role, f"seeded turn {i}")
+
+    # Confirm pre-conditions: no summary yet, 25 turns in the post-summary tail.
+    summary_before, turns_before = await store.load_summary_and_turns(cid)
+    assert summary_before is None
+    assert len(turns_before) == 25
+
+    # Fire a chat request -- the summariser should run during history load.
+    resp = await client.post("/api/chat", json={"query": "next turn", "conversation_id": cid})
+    assert resp.status_code == 200
+
+    # Post-condition: a summary now exists; the post-boundary tail is
+    # exactly the SummariserConfig.keep_recent (default 10) plus the new
+    # round that the route just persisted (user + assistant = 2).
+    summary_after, turns_after = await store.load_summary_and_turns(cid)
+    assert summary_after is not None
+    assert len(turns_after) == 12  # 10 kept verbatim + 2 from the new round

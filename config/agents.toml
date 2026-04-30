@@ -84,6 +84,19 @@ allowed_tools = [
 ]
 max_tool_calls = 5
 
+[summariser]
+# Conversation memory summariser: triggered lazily on read when a
+# conversation's unsummarised tail exceeds `summarise_threshold` turns.
+# Folds everything except the last `keep_recent` turns into a rolling
+# summary so distant context survives compression.
+enabled = true
+model = "llama3.2:3b"
+# Anthropic alternative: provider = "anthropic", model = "claude-haiku-4-5-20251001"
+keep_recent = 10
+summarise_threshold = 20
+prompt = """Summarise the following conversation between a user and an assistant. Preserve facts, decisions, and context that future turns may need. Be concise but do not omit names, numbers, or specifics. If a prior summary is provided, integrate the new turns into it rather than restarting."""
+max_tokens = 512
+
 [worklog_agent]
 enabled = true
 model = "llama3.2:3b"

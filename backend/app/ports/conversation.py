@@ -22,6 +22,19 @@ class Turn:
     content: str
 
 
+@dataclass
+class StoredTurn:
+    """A `Turn` with its storage-assigned id.
+
+    Used by the conversation-memory service when it needs to mark a boundary
+    for summarisation -- the id of the last summarised turn becomes the
+    "everything before this is now in the summary" cutoff."""
+
+    id: int
+    role: Role
+    content: str
+
+
 @runtime_checkable
 class ConversationReaderPort(Protocol):
     async def load(self, conversation_id: str, limit: int = 20) -> list[Turn]:
@@ -29,6 +42,19 @@ class ConversationReaderPort(Protocol):
 
         An unknown conversation_id returns an empty list (not an error) -- a
         first-turn user implicitly creates the conversation by sending a query."""
+        ...
+
+    async def load_summary_and_turns(
+        self, conversation_id: str
+    ) -> tuple[str | None, list[StoredTurn]]:
+        """Return the rolling summary (if any) and all turns since the
+        summary's boundary, oldest-first with their storage ids.
+
+        Used by the conversation-memory service to decide whether to trigger
+        further summarisation. The first element is the summary text or None
+        if no summary has been recorded yet; the second is every turn whose
+        id is strictly greater than the summary's boundary id (or all turns
+        if no summary exists)."""
         ...
 
 
@@ -51,4 +77,16 @@ class ConversationWriterPort(Protocol):
         no reply" ghost row that would corrupt future history loads.
 
         Implementations must commit both rows in a single transaction."""
+        ...
+
+    async def upsert_summary(
+        self,
+        conversation_id: str,
+        summary: str,
+        summarised_through_turn_id: int,
+    ) -> None:
+        """Set the rolling summary for this conversation, replacing any prior
+        summary. The boundary id marks the cutoff: a subsequent
+        `load_summary_and_turns` will return only turns with id strictly
+        greater than `summarised_through_turn_id`."""
         ...

@@ -18,7 +18,7 @@ import threading
 import time
 from pathlib import Path
 
-from app.ports.conversation import Role, Turn
+from app.ports.conversation import Role, StoredTurn, Turn
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS conversation_turns (
@@ -31,6 +31,17 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_id_id
     ON conversation_turns (conversation_id, id);
+
+-- Rolling summary per conversation. One row per conversation_id, replaced
+-- in place by the summarisation service when it triggers (lazy, on read).
+-- summarised_through_turn_id marks the boundary: turns with id > that value
+-- are NOT in the summary and remain verbatim in conversation_turns.
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+    conversation_id TEXT PRIMARY KEY,
+    summary TEXT NOT NULL,
+    summarised_through_turn_id INTEGER NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
 
 
@@ -136,3 +147,69 @@ class SQLiteConversationStore:
             rows = cursor.fetchall()
         rows.reverse()
         return [Turn(role=row["role"], content=row["content"]) for row in rows]
+
+    async def load_summary_and_turns(
+        self, conversation_id: str
+    ) -> tuple[str | None, list[StoredTurn]]:
+        return await asyncio.to_thread(self._load_summary_and_turns_sync, conversation_id)
+
+    def _load_summary_and_turns_sync(
+        self, conversation_id: str
+    ) -> tuple[str | None, list[StoredTurn]]:
+        with self._lock:
+            summary_row = self._conn.execute(
+                "SELECT summary, summarised_through_turn_id "
+                "FROM conversation_summaries WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+            if summary_row is not None:
+                summary_text = summary_row["summary"]
+                boundary_id = summary_row["summarised_through_turn_id"]
+                turn_rows = self._conn.execute(
+                    "SELECT id, role, content FROM conversation_turns "
+                    "WHERE conversation_id = ? AND id > ? ORDER BY id ASC",
+                    (conversation_id, boundary_id),
+                ).fetchall()
+            else:
+                summary_text = None
+                turn_rows = self._conn.execute(
+                    "SELECT id, role, content FROM conversation_turns "
+                    "WHERE conversation_id = ? ORDER BY id ASC",
+                    (conversation_id,),
+                ).fetchall()
+        turns = [
+            StoredTurn(id=row["id"], role=row["role"], content=row["content"]) for row in turn_rows
+        ]
+        return summary_text, turns
+
+    async def upsert_summary(
+        self,
+        conversation_id: str,
+        summary: str,
+        summarised_through_turn_id: int,
+    ) -> None:
+        await asyncio.to_thread(
+            self._upsert_summary_sync,
+            conversation_id,
+            summary,
+            summarised_through_turn_id,
+        )
+
+    def _upsert_summary_sync(
+        self,
+        conversation_id: str,
+        summary: str,
+        summarised_through_turn_id: int,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO conversation_summaries "
+                "(conversation_id, summary, summarised_through_turn_id, updated_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(conversation_id) DO UPDATE SET "
+                "summary = excluded.summary, "
+                "summarised_through_turn_id = excluded.summarised_through_turn_id, "
+                "updated_at = excluded.updated_at",
+                (conversation_id, summary, summarised_through_turn_id, time.time()),
+            )
+            self._conn.commit()
