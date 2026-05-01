@@ -17,6 +17,7 @@ import { useConversationList } from "../hooks/useConversationList";
 import { deleteConversation, listCollections } from "../api/client";
 import ConversationHistoryPanel from "./ConversationHistoryPanel";
 import ConversationListSidebar from "./ConversationListSidebar";
+import SummarisationToast from "./SummarisationToast";
 import TraceView from "./TraceView";
 import type { CitationOut, Message } from "../api/types";
 
@@ -135,6 +136,7 @@ export default function ChatView() {
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [summarisationToastKey, setSummarisationToastKey] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch persisted conversation detail (summary + turns) for the header
@@ -164,6 +166,21 @@ export default function ChatView() {
   // Auto-scroll to newest message.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Watch each new assistant message's trace for a memory_load entry that
+  // reports summarisation_triggered=true. Bump the toast key so the
+  // SummarisationToast re-fires. Why peer at the trace rather than tap
+  // into the streaming events directly: the trace is already projected
+  // onto the message and re-renders are cheap; the alternative would mean
+  // threading a callback into useChat for one peripheral concern.
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || !last.trace) return;
+    const memoryEntry = last.trace.find((t) => t.node === "memory_load");
+    if (memoryEntry?.data?.summarisation_triggered === true) {
+      setSummarisationToastKey((n) => n + 1);
+    }
   }, [messages]);
 
   const handleSubmit = useCallback(
@@ -211,6 +228,10 @@ export default function ChatView() {
 
   return (
     <div className="flex h-full">
+      {/* Toast for "summarisation just fired". Mounted at the root so it
+          floats over the layout regardless of which panel is active. */}
+      <SummarisationToast triggerKey={summarisationToastKey} />
+
       {/* Leftmost panel -- conversation navigator. Always visible: empty
           state shows a hint to start a new conversation. */}
       <ConversationListSidebar
