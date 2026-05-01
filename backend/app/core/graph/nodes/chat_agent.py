@@ -17,10 +17,27 @@ async def run(
 ) -> dict[str, Any]:
     start = time.monotonic()
 
+    # Feed prior turns chronologically so the LLM has conversational context.
+    # The current query is appended last as the new user turn. When `history`
+    # is empty the prompt collapses to single-turn behaviour.
+    messages = [{"role": turn.role, "content": turn.content} for turn in state.history]
+    messages.append({"role": "user", "content": state.query})
+
+    # When a rolling summary exists (conversation has been long enough to
+    # trigger compression), prepend it to the system prompt as recovered
+    # context. This gives the model access to facts and decisions from
+    # earlier turns that no longer survive in the verbatim history window.
+    system_prompt = config.system_prompt
+    if state.conversation_summary:
+        system_prompt = (
+            f"Summary of earlier conversation: {state.conversation_summary}\n\n"
+            f"{config.system_prompt}"
+        )
+
     response = await llm.complete(
-        messages=[{"role": "user", "content": state.query}],
+        messages=messages,
         model=config.model,
-        system=config.system_prompt,
+        system=system_prompt,
         max_tokens=config.max_tokens,
     )
 

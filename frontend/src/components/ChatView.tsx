@@ -12,7 +12,12 @@ import {
   useState,
 } from "react";
 import { useChat } from "../hooks/useChat";
-import { listCollections } from "../api/client";
+import { useConversationDetail } from "../hooks/useConversationDetail";
+import { useConversationList } from "../hooks/useConversationList";
+import { deleteConversation, listCollections } from "../api/client";
+import ConversationHistoryPanel from "./ConversationHistoryPanel";
+import ConversationListSidebar from "./ConversationListSidebar";
+import SummarisationToast from "./SummarisationToast";
 import TraceView from "./TraceView";
 import type { CitationOut, Message } from "../api/types";
 
@@ -117,11 +122,37 @@ function MessageBubble({ msg }: { msg: Message }) {
 // ---------------------------------------------------------------------------
 
 export default function ChatView() {
-  const { messages, loading, activeNode, error, send } = useChat();
+  const {
+    messages,
+    loading,
+    activeNode,
+    error,
+    conversationId,
+    send,
+    clear,
+    loadConversation,
+  } = useChat();
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [summarisationToastKey, setSummarisationToastKey] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch persisted conversation detail (summary + turns) for the header
+  // chip and the optional history panel. Refetches whenever a new message
+  // lands so the count stays in sync as the chat progresses.
+  const { detail: conversationDetail } = useConversationDetail(
+    conversationId,
+    messages.length,
+  );
+
+  // Fetch the full conversation list for the left-rail sidebar. Refetched
+  // on activeId or message-count change so newly-created conversations
+  // and updated metadata (summarised badge, turn_count) appear without a
+  // manual reload.
+  const { overviews: conversationOverviews, refetch: refetchConversationList } =
+    useConversationList(`${conversationId ?? ""}-${messages.length}`);
 
   // Fetch collections on mount so the user can scope queries.
   useEffect(() => {
@@ -135,6 +166,21 @@ export default function ChatView() {
   // Auto-scroll to newest message.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // Watch each new assistant message's trace for a memory_load entry that
+  // reports summarisation_triggered=true. Bump the toast key so the
+  // SummarisationToast re-fires. Why peer at the trace rather than tap
+  // into the streaming events directly: the trace is already projected
+  // onto the message and re-renders are cheap; the alternative would mean
+  // threading a callback into useChat for one peripheral concern.
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || !last.trace) return;
+    const memoryEntry = last.trace.find((t) => t.node === "memory_load");
+    if (memoryEntry?.data?.summarisation_triggered === true) {
+      setSummarisationToastKey((n) => n + 1);
+    }
   }, [messages]);
 
   const handleSubmit = useCallback(
@@ -158,9 +204,43 @@ export default function ChatView() {
     [handleSubmit],
   );
 
+  const handleDeleteConversation = useCallback(async () => {
+    if (!conversationId) return;
+    // Confirm before destroying persisted state. Inline confirm() is
+    // intentionally low-tech for a debug surface; a proper modal can be
+    // added later if this graduates beyond dev.
+    if (!window.confirm("Delete this conversation? This cannot be undone.")) {
+      return;
+    }
+    try {
+      await deleteConversation(conversationId);
+    } catch {
+      // Silent: the next refetch will reflect server state regardless.
+    }
+    // Reset chat state so the next message starts a fresh conversation,
+    // matching the "New conversation" affordance.
+    clear();
+    setHistoryPanelOpen(false);
+    // Force the sidebar to re-pull immediately so the deleted row drops
+    // out without waiting for the next conversationId change.
+    refetchConversationList();
+  }, [conversationId, clear, refetchConversationList]);
+
   return (
     <div className="flex h-full">
-      {/* Left panel -- collection picker */}
+      {/* Toast for "summarisation just fired". Mounted at the root so it
+          floats over the layout regardless of which panel is active. */}
+      <SummarisationToast triggerKey={summarisationToastKey} />
+
+      {/* Leftmost panel -- conversation navigator. Always visible: empty
+          state shows a hint to start a new conversation. */}
+      <ConversationListSidebar
+        overviews={conversationOverviews}
+        activeConversationId={conversationId}
+        onSelect={loadConversation}
+      />
+
+      {/* Middle panel -- collection picker */}
       {collections.length > 0 && (
         <aside className="flex w-52 flex-col border-r border-gray-700">
           <div className="border-b border-gray-700 px-4 py-3">
@@ -208,6 +288,77 @@ export default function ChatView() {
 
       {/* Right panel -- chat messages and input */}
       <div className="flex flex-1 flex-col">
+        {/* Conversation header: shows id of current conversation and a
+            button to start a new one. Only visible once a conversation has
+            actually started -- no chrome on the empty state. */}
+        {conversationId && (
+          <div className="flex items-center justify-between border-b border-gray-700 bg-gray-900/40 px-4 py-2 text-xs">
+            <div className="flex items-center gap-3 text-gray-500">
+              <span>
+                Conversation{" "}
+                <code className="rounded bg-gray-800 px-1.5 py-0.5 font-mono text-gray-400">
+                  {conversationId.slice(0, 8)}
+                </code>
+              </span>
+              {conversationDetail && (
+                <>
+                  <span className="text-gray-600">·</span>
+                  <span
+                    title={
+                      conversationDetail.summary
+                        ? "Verbatim turns kept after summarisation; older turns are folded into the summary."
+                        : `turn count for ${conversationId}`
+                    }
+                  >
+                    {conversationDetail.turns.length}{" "}
+                    turn{conversationDetail.turns.length !== 1 && "s"}
+                  </span>
+                  {conversationDetail.summary && (
+                    <>
+                      <span className="text-gray-600">·</span>
+                      <span
+                        title="A rolling summary has been generated for older turns. Hover the turn count to see how the verbatim window is computed."
+                        className="rounded bg-indigo-900/40 px-1.5 py-0.5 text-indigo-300"
+                      >
+                        summarised
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {conversationDetail && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryPanelOpen((v) => !v)}
+                  className="rounded border border-gray-700 px-2 py-1 text-gray-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
+                  aria-expanded={historyPanelOpen}
+                >
+                  {historyPanelOpen ? "Hide" : "View"} history
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={clear}
+                className="rounded border border-gray-700 px-2 py-1 text-gray-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
+              >
+                New conversation
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* History panel surfaces what's persisted server-side -- the rolling
+            summary plus verbatim post-boundary turns. Renders below the
+            header so it's clearly tied to the active conversation. */}
+        {conversationId && historyPanelOpen && conversationDetail && (
+          <ConversationHistoryPanel
+            detail={conversationDetail}
+            onDelete={handleDeleteConversation}
+          />
+        )}
+
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {messages.length === 0 && !loading && (
             <p className="pt-16 text-center text-sm text-gray-500">

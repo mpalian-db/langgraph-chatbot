@@ -20,6 +20,7 @@ from app.adapters.storage.local import LocalFileStorageAdapter
 from app.adapters.vectorstore.qdrant import QdrantVectorStoreAdapter
 from app.core.config.loader import load_agents_config, load_system_config
 from app.core.config.models import AgentsConfig, SystemConfig
+from app.ports.conversation import ConversationReaderPort, ConversationWriterPort
 from app.ports.embedding import EmbeddingPort
 from app.ports.llm import LLMPort
 from app.ports.notion import NotionPort
@@ -65,6 +66,29 @@ def get_llm(
         return AnthropicLLMAdapter()
     msg = f"Unknown LLM provider: {provider}"
     raise ValueError(msg)
+
+
+def get_llm_registry(
+    system_config: SystemConfig = Depends(get_system_config),
+) -> dict[str, LLMPort]:
+    """Build the LLM registry exposing every available provider.
+
+    Per-node `provider` overrides in agents.toml resolve against this map.
+    Ollama is always present (it's the local-dev default). Anthropic is only
+    included when ANTHROPIC_API_KEY is set, so a node that requests
+    `provider = "anthropic"` without credentials fails loudly at graph build
+    with a clear "not registered" error, instead of a silent fallback or
+    an opaque adapter-level crash. The graph is built per-request inside
+    the chat handler, so the failure surfaces on first chat -- a future
+    improvement is to validate the registry at application startup."""
+    import os
+
+    registry: dict[str, LLMPort] = {
+        "ollama": OllamaLLMAdapter(base_url=system_config.llm.ollama_base_url),
+    }
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        registry["anthropic"] = AnthropicLLMAdapter()
+    return registry
 
 
 def get_vector_store(
@@ -162,6 +186,33 @@ def get_worklog() -> WorklogPort | None:
     return WorklogHTTPAdapter(base_url=worker_url, api_key=api_key)
 
 
+@lru_cache(maxsize=1)
+def get_conversation_store():
+    """Single shared SQLite-backed conversation store for the application.
+
+    Cached because SQLiteConversationStore holds an open connection -- one
+    instance per process is the right shape, and lru_cache here gives us
+    that without smuggling globals into the module namespace.
+
+    Note: lru_cache is not strictly thread-safe at cold-start. Under
+    concurrent first-request initialization, two store instances may briefly
+    be created. With file-backed SQLite this is benign (both connections
+    address the same file). For ":memory:" this would matter -- only used
+    in tests, which are single-process and not affected."""
+    from app.adapters.conversation.sqlite import SQLiteConversationStore
+
+    db_path = _PROJECT_ROOT / "data" / "conversations.sqlite"
+    return SQLiteConversationStore(db_path=db_path)
+
+
+def get_conversation_reader() -> ConversationReaderPort:
+    return get_conversation_store()
+
+
+def get_conversation_writer() -> ConversationWriterPort:
+    return get_conversation_store()
+
+
 # ---------------------------------------------------------------------------
 # Typed dependency aliases for route signatures
 # ---------------------------------------------------------------------------
@@ -169,9 +220,12 @@ def get_worklog() -> WorklogPort | None:
 SystemConfigDep = Annotated[SystemConfig, Depends(get_system_config)]
 AgentsConfigDep = Annotated[AgentsConfig, Depends(get_agents_config)]
 LLMDep = Annotated[LLMPort, Depends(get_llm)]
+LLMRegistryDep = Annotated[dict[str, LLMPort], Depends(get_llm_registry)]
 VectorStoreDep = Annotated[VectorStorePort, Depends(get_vector_store)]
 CollectionDep = Annotated[CollectionPort, Depends(get_collection_port)]
 EmbeddingDep = Annotated[EmbeddingPort, Depends(get_embedding)]
 StorageDep = Annotated[DocumentStoragePort, Depends(get_storage)]
+ConversationReaderDep = Annotated[ConversationReaderPort, Depends(get_conversation_reader)]
+ConversationWriterDep = Annotated[ConversationWriterPort, Depends(get_conversation_writer)]
 NotionDep = Annotated[NotionPort, Depends(get_notion)]
 WorklogDep = Annotated[WorklogPort | None, Depends(get_worklog)]

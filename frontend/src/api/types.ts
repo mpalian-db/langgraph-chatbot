@@ -12,6 +12,10 @@
 export interface ChatRequest {
   query: string;
   collection?: string;
+  // Bind this turn to an existing conversation. When omitted the server
+  // generates a new uuid and returns it on the response, which the client
+  // should then echo back on follow-up turns to maintain history.
+  conversation_id?: string;
 }
 
 export interface CitationOut {
@@ -28,6 +32,9 @@ export interface TraceEntryOut {
 
 export interface ChatResponse {
   answer: string;
+  // Always populated by the backend -- generated on first turn, echoed
+  // verbatim on subsequent turns of the same conversation.
+  conversation_id: string;
   route: string | null;
   citations: CitationOut[];
   trace: TraceEntryOut[];
@@ -88,6 +95,32 @@ export type StreamEvent =
   | StreamEventNodeStart
   | StreamEventNodeEnd
   | StreamEventResult;
+
+// ---------------------------------------------------------------------------
+// Conversations (debug/introspection)
+// ---------------------------------------------------------------------------
+
+export interface ConversationOverviewOut {
+  conversation_id: string;
+  // Auto-derived from the first user turn when the conversation was
+  // created. May be null on legacy or assistant-only conversations.
+  title: string | null;
+  turn_count: number;
+  has_summary: boolean;
+  last_updated_at: number | null;
+}
+
+export interface TurnOut {
+  role: string;
+  content: string;
+}
+
+export interface ConversationDetailOut {
+  conversation_id: string;
+  title: string | null;
+  summary: string | null;
+  turns: TurnOut[];
+}
 
 // ---------------------------------------------------------------------------
 // UI-level types (not from backend)

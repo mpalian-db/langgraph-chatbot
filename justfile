@@ -94,13 +94,23 @@ test-all:
 test-one FILE:
     cd backend && uv run pytest {{FILE}} -v
 
-# Lint (no auto-fix)
+# Lint (no auto-fix). Matches CI exactly: ruff + mypy.
+# Mypy was missing before -- a type error could pass `just lint` locally
+# but fail CI. Now they stay in lockstep.
 lint:
     cd backend && uv run ruff check . && uv run ruff format --check .
+    cd backend && uv run mypy app --ignore-missing-imports
 
 # Auto-format
 format:
     cd backend && uv run ruff format . && uv run ruff check --fix .
+
+# Run every gate that CI runs: backend lint + tests, frontend type-check
+# + tests + build. The fast confidence check before pushing.
+check:
+    just lint
+    just test
+    cd frontend && npx tsc --noEmit && npm test -- --run && npm run build
 
 # Stop all local services
 stop:
