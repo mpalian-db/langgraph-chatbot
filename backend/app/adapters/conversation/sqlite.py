@@ -42,7 +42,23 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
     summarised_through_turn_id INTEGER NOT NULL,
     updated_at REAL NOT NULL
 );
+
+-- Conversation-level metadata (title, timestamps). Separate from turns
+-- and summaries so read-only metadata reads stay cheap and so a title is
+-- stable across summarisation rounds (deriving it at read time from the
+-- earliest verbatim turn would cause the title to silently change once
+-- old turns get folded into the summary).
+CREATE TABLE IF NOT EXISTS conversations (
+    conversation_id TEXT PRIMARY KEY,
+    title TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
 """
+
+# How many characters of the first user message to use as the auto-title.
+# Long enough to be meaningful, short enough not to sprawl the sidebar.
+_AUTO_TITLE_MAX_CHARS = 60
 
 
 class SQLiteConversationStore:
@@ -91,12 +107,38 @@ class SQLiteConversationStore:
 
     def _append_sync(self, conversation_id: str, role: Role, content: str) -> None:
         with self._lock:
+            self._upsert_conversation_metadata(conversation_id, role, content)
             self._conn.execute(
                 "INSERT INTO conversation_turns "
                 "(conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
                 (conversation_id, role, content, time.time()),
             )
             self._conn.commit()
+
+    def _upsert_conversation_metadata(self, conversation_id: str, role: Role, content: str) -> None:
+        """Maintain the conversations metadata row for `conversation_id`.
+
+        Behaviour:
+          * If the row doesn't exist, create it with `title` set to the
+            first `_AUTO_TITLE_MAX_CHARS` of `content` when the incoming
+            turn is a user message, else NULL.
+          * If the row exists, refresh `updated_at` and only set `title`
+            if it was NULL (so the first user turn wins; later messages
+            never silently rename a conversation).
+
+        Caller must hold the connection lock; this method does not commit
+        -- it's part of a larger transaction in append/append_pair."""
+        now = time.time()
+        candidate_title = content[:_AUTO_TITLE_MAX_CHARS] if role == "user" else None
+        self._conn.execute(
+            "INSERT INTO conversations "
+            "(conversation_id, title, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(conversation_id) DO UPDATE SET "
+            "  updated_at = excluded.updated_at, "
+            "  title = COALESCE(conversations.title, excluded.title)",
+            (conversation_id, candidate_title, now, now),
+        )
 
     async def append_pair(
         self, conversation_id: str, user_content: str, assistant_content: str
@@ -113,6 +155,11 @@ class SQLiteConversationStore:
         now = time.time()
         with self._lock:
             try:
+                # Maintain the conversations metadata row (title from the
+                # user content on first turn, updated_at refreshed on every
+                # turn). All three writes (metadata + user turn + assistant
+                # turn) commit atomically below.
+                self._upsert_conversation_metadata(conversation_id, "user", user_content)
                 self._conn.execute(
                     "INSERT INTO conversation_turns "
                     "(conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
@@ -198,42 +245,66 @@ class SQLiteConversationStore:
         #     last turn's created_at or the summary's updated_at, whichever
         #     is newer. Ordering by this column means "most recently active
         #     first" works for both turn updates and summary updates.
+        # The outer LEFT JOIN brings in the title from the conversations
+        # metadata table; a missing metadata row means title is NULL.
         sql = """
             SELECT
-                conversation_id,
-                SUM(turn_count) AS turn_count,
-                MAX(has_summary) AS has_summary,
-                MAX(last_at) AS last_at
+                agg.conversation_id,
+                agg.turn_count,
+                agg.has_summary,
+                agg.last_at,
+                conv.title
             FROM (
                 SELECT
                     conversation_id,
-                    COUNT(*) AS turn_count,
-                    0 AS has_summary,
-                    MAX(created_at) AS last_at
-                FROM conversation_turns
+                    SUM(turn_count) AS turn_count,
+                    MAX(has_summary) AS has_summary,
+                    MAX(last_at) AS last_at
+                FROM (
+                    SELECT
+                        conversation_id,
+                        COUNT(*) AS turn_count,
+                        0 AS has_summary,
+                        MAX(created_at) AS last_at
+                    FROM conversation_turns
+                    GROUP BY conversation_id
+                    UNION ALL
+                    SELECT
+                        conversation_id,
+                        0 AS turn_count,
+                        1 AS has_summary,
+                        updated_at AS last_at
+                    FROM conversation_summaries
+                )
                 GROUP BY conversation_id
-                UNION ALL
-                SELECT
-                    conversation_id,
-                    0 AS turn_count,
-                    1 AS has_summary,
-                    updated_at AS last_at
-                FROM conversation_summaries
-            )
-            GROUP BY conversation_id
-            ORDER BY MAX(last_at) DESC
+            ) AS agg
+            LEFT JOIN conversations AS conv
+                ON conv.conversation_id = agg.conversation_id
+            ORDER BY agg.last_at DESC
         """
         with self._lock:
             rows = self._conn.execute(sql).fetchall()
         return [
             ConversationOverview(
                 conversation_id=row["conversation_id"],
+                title=row["title"],
                 turn_count=row["turn_count"],
                 has_summary=bool(row["has_summary"]),
                 last_updated_at=row["last_at"],
             )
             for row in rows
         ]
+
+    async def get_conversation_title(self, conversation_id: str) -> str | None:
+        return await asyncio.to_thread(self._get_conversation_title_sync, conversation_id)
+
+    def _get_conversation_title_sync(self, conversation_id: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT title FROM conversations WHERE conversation_id = ?",
+                (conversation_id,),
+            ).fetchone()
+        return row["title"] if row else None
 
     async def upsert_summary(
         self,
@@ -271,10 +342,11 @@ class SQLiteConversationStore:
         await asyncio.to_thread(self._delete_conversation_sync, conversation_id)
 
     def _delete_conversation_sync(self, conversation_id: str) -> None:
-        # Atomic across both tables: DELETE FROM conversation_turns and
-        # DELETE FROM conversation_summaries in a single transaction. If
-        # either fails, the other rolls back so we can never leave an
-        # orphan summary pointing at deleted turns (or the inverse).
+        # Atomic across all three tables: turns, summaries, and the
+        # metadata row. A single transaction; if any DELETE fails, the
+        # others roll back so a partially-deleted conversation can never
+        # surface in subsequent reads (orphan title pointing at
+        # nothing, or surviving summary referencing deleted turns).
         with self._lock:
             try:
                 self._conn.execute(
@@ -283,6 +355,10 @@ class SQLiteConversationStore:
                 )
                 self._conn.execute(
                     "DELETE FROM conversation_summaries WHERE conversation_id = ?",
+                    (conversation_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM conversations WHERE conversation_id = ?",
                     (conversation_id,),
                 )
                 self._conn.commit()

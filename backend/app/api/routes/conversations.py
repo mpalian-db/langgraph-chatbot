@@ -26,6 +26,9 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 class ConversationOverviewOut(BaseModel):
     conversation_id: str
+    # Auto-derived from the first user turn's content (truncated). None
+    # when a conversation has no user turns yet (rare defensive case).
+    title: str | None = None
     turn_count: int
     has_summary: bool
     last_updated_at: float | None
@@ -38,6 +41,7 @@ class TurnOut(BaseModel):
 
 class ConversationDetailOut(BaseModel):
     conversation_id: str
+    title: str | None = None
     summary: str | None
     turns: list[TurnOut]
 
@@ -57,6 +61,7 @@ async def list_conversations(
     return [
         ConversationOverviewOut(
             conversation_id=o.conversation_id,
+            title=o.title,
             turn_count=o.turn_count,
             has_summary=o.has_summary,
             last_updated_at=o.last_updated_at,
@@ -76,8 +81,10 @@ async def get_conversation(
     summary, turns = await reader.load_summary_and_turns(conversation_id)
     if summary is None and not turns:
         raise HTTPException(status_code=404, detail=f"conversation {conversation_id!r} not found")
+    title = await reader.get_conversation_title(conversation_id)
     return ConversationDetailOut(
         conversation_id=conversation_id,
+        title=title,
         summary=summary,
         turns=[TurnOut(role=t.role, content=t.content) for t in turns],
     )

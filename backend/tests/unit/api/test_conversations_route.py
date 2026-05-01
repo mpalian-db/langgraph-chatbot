@@ -73,8 +73,13 @@ async def test_list_returns_overview_per_conversation(
     assert by_id["conv-A"]["turn_count"] == 2
     assert by_id["conv-A"]["has_summary"] is True
     assert by_id["conv-A"]["last_updated_at"] is not None
+    # Auto-title from first user turn -- pinned at the route boundary so
+    # a regression in either the adapter SQL or the route serialisation
+    # would surface here.
+    assert by_id["conv-A"]["title"] == "hello"
     assert by_id["conv-B"]["turn_count"] == 1
     assert by_id["conv-B"]["has_summary"] is False
+    assert by_id["conv-B"]["title"] == "different chat"
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +103,10 @@ async def test_detail_returns_summary_and_turns(
     body = resp.json()
     assert body["conversation_id"] == "conv-1"
     assert body["summary"] == "context summary"
+    # Title is the first user turn's content, stable across summarisation:
+    # even though "first" is now folded into the summary, the title still
+    # comes from it.
+    assert body["title"] == "first"
     # Only post-boundary turns -- the summarised ones are folded into the summary.
     assert [(t["role"], t["content"]) for t in body["turns"]] == [
         ("user", "second"),

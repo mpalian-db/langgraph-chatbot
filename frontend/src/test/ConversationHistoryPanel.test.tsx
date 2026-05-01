@@ -9,6 +9,7 @@ function detail(
 ): ConversationDetailOut {
   return {
     conversation_id: "conv-1",
+    title: null,
     summary: null,
     turns: [],
     ...overrides,

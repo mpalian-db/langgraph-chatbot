@@ -284,6 +284,112 @@ async def test_summary_is_isolated_per_conversation(store: SQLiteConversationSto
 
 
 # ---------------------------------------------------------------------------
+# Auto-title: first user content seeds the conversation title; later
+# messages don't silently rename it.
+# ---------------------------------------------------------------------------
+
+
+async def test_first_user_turn_sets_conversation_title(
+    store: SQLiteConversationStore,
+):
+    """The first user message becomes the auto-title (truncated to the
+    configured maximum). Pin the contract: title appears in
+    list_conversations after the first append."""
+    await store.append("conv-1", "user", "What is LangGraph?")
+
+    overviews = await store.list_conversations()
+
+    assert overviews[0].title == "What is LangGraph?"
+
+
+async def test_long_first_user_content_is_truncated_for_title(
+    store: SQLiteConversationStore,
+):
+    """A 200-char first message must produce a title at most
+    _AUTO_TITLE_MAX_CHARS (60) long, so a sidebar row stays readable."""
+    long = "A " * 100  # 200 characters
+    await store.append("conv-1", "user", long)
+
+    overviews = await store.list_conversations()
+
+    title = overviews[0].title or ""
+    assert 0 < len(title) <= 60
+
+
+async def test_title_is_stable_across_subsequent_messages(
+    store: SQLiteConversationStore,
+):
+    """The title is set once at creation. Later user turns must NOT
+    silently rename the conversation -- otherwise the sidebar entry
+    keeps shifting and the user can't recognise their own threads."""
+    await store.append("conv-1", "user", "Original title")
+    await store.append("conv-1", "assistant", "reply")
+    await store.append("conv-1", "user", "completely different topic")
+
+    overviews = await store.list_conversations()
+
+    assert overviews[0].title == "Original title"
+
+
+async def test_assistant_only_first_turn_leaves_title_null(
+    store: SQLiteConversationStore,
+):
+    """Defensive case: a conversation that opens with an assistant turn
+    (e.g. system-injected) shouldn't get a title from that content. The
+    next user turn is what should set it."""
+    await store.append("conv-1", "assistant", "Welcome!")
+
+    overviews = await store.list_conversations()
+    assert overviews[0].title is None
+
+    # User message arrives -- now the title is set.
+    await store.append("conv-1", "user", "Hello there")
+    overviews = await store.list_conversations()
+    assert overviews[0].title == "Hello there"
+
+
+async def test_append_pair_sets_title_from_user_content(
+    store: SQLiteConversationStore,
+):
+    """append_pair is the dominant call site; the title must come from
+    the user side of the pair, not the assistant side."""
+    await store.append_pair("conv-1", "user query here", "assistant reply")
+
+    overviews = await store.list_conversations()
+    assert overviews[0].title == "user query here"
+
+
+async def test_get_conversation_title_returns_value(
+    store: SQLiteConversationStore,
+):
+    await store.append("conv-1", "user", "ask something")
+    title = await store.get_conversation_title("conv-1")
+    assert title == "ask something"
+
+
+async def test_get_conversation_title_returns_none_for_unknown(
+    store: SQLiteConversationStore,
+):
+    title = await store.get_conversation_title("never-seen")
+    assert title is None
+
+
+async def test_delete_conversation_clears_metadata_row_too(
+    store: SQLiteConversationStore,
+):
+    """The metadata row must be deleted alongside turns and the summary,
+    so the deleted conversation can never resurface in list_conversations
+    via an orphan title."""
+    await store.append("conv-1", "user", "to be deleted")
+
+    await store.delete_conversation("conv-1")
+
+    overviews = await store.list_conversations()
+    assert overviews == []
+    assert await store.get_conversation_title("conv-1") is None
+
+
+# ---------------------------------------------------------------------------
 # delete_conversation: atomic over both tables
 # ---------------------------------------------------------------------------
 

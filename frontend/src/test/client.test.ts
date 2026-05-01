@@ -102,6 +102,7 @@ describe("API client", () => {
       const overviews = [
         {
           conversation_id: "abc",
+          title: "Hello",
           turn_count: 2,
           has_summary: false,
           last_updated_at: 1700000000,

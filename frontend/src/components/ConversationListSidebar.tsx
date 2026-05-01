@@ -75,10 +75,19 @@ export default function ConversationListSidebar({
                 aria-current={isActive ? "true" : undefined}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <code className="font-mono text-[11px] text-gray-400">
-                    {conv.conversation_id.slice(0, 8)}
-                  </code>
-                  <span className="text-[10px] text-gray-500 tabular-nums">
+                  {/* Title takes precedence; fall back to truncated id when
+                      the conversation has no user-derived title yet. */}
+                  <span
+                    className="truncate font-medium text-gray-200"
+                    title={conv.title ?? conv.conversation_id}
+                  >
+                    {conv.title ?? (
+                      <code className="font-mono text-[11px] text-gray-400">
+                        {conv.conversation_id.slice(0, 8)}
+                      </code>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-gray-500 tabular-nums">
                     {formatTimestamp(conv.last_updated_at)}
                   </span>
                 </div>

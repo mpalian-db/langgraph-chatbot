@@ -23,6 +23,7 @@ describe("useConversationList", () => {
     const data = [
       {
         conversation_id: "conv-A",
+        title: "Hello world",
         turn_count: 4,
         has_summary: false,
         last_updated_at: 1234567890,

@@ -102,6 +102,9 @@ export type StreamEvent =
 
 export interface ConversationOverviewOut {
   conversation_id: string;
+  // Auto-derived from the first user turn when the conversation was
+  // created. May be null on legacy or assistant-only conversations.
+  title: string | null;
   turn_count: number;
   has_summary: boolean;
   last_updated_at: number | null;
@@ -114,6 +117,7 @@ export interface TurnOut {
 
 export interface ConversationDetailOut {
   conversation_id: string;
+  title: string | null;
   summary: string | null;
   turns: TurnOut[];
 }

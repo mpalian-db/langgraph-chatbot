@@ -40,9 +40,14 @@ class ConversationOverview:
     """Lightweight conversation metadata for the list endpoint.
 
     Excludes turn content so a "list all conversations" call stays cheap
-    even when individual conversations have hundreds of turns."""
+    even when individual conversations have hundreds of turns.
+
+    `title` is auto-derived from the first user turn at conversation
+    creation; None if the conversation only has assistant or summary
+    rows so far (rare, mostly a defensive case)."""
 
     conversation_id: str
+    title: str | None
     turn_count: int
     has_summary: bool
     last_updated_at: float | None  # epoch seconds, None when no turns yet
@@ -77,6 +82,14 @@ class ConversationReaderPort(Protocol):
         Used by debug/inspection tooling. Implementations should return
         cheap metadata only -- no turn content -- so the result remains
         small even when conversations are long."""
+        ...
+
+    async def get_conversation_title(self, conversation_id: str) -> str | None:
+        """Return the auto-derived title for a single conversation, or
+        None when the conversation has no metadata row (or the title
+        column is unset). Cheap single-row lookup -- used by the detail
+        endpoint to avoid scanning the full list when only one
+        conversation's metadata is needed."""
         ...
 
 

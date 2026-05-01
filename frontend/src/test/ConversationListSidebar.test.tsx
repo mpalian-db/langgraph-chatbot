@@ -9,6 +9,7 @@ function ov(
 ): ConversationOverviewOut {
   return {
     conversation_id: "conv-1",
+    title: null,
     turn_count: 2,
     has_summary: false,
     last_updated_at: null,
@@ -98,5 +99,29 @@ describe("ConversationListSidebar", () => {
 
     const badges = screen.getAllByText(/summarised/i);
     expect(badges).toHaveLength(1);
+  });
+
+  it("renders title when present, truncated id otherwise", () => {
+    render(
+      <ConversationListSidebar
+        overviews={[
+          ov({
+            conversation_id: "abcd1234-with-title",
+            title: "What is LangGraph?",
+          }),
+          ov({
+            conversation_id: "ffff0000-no-title",
+            title: null,
+          }),
+        ]}
+        activeConversationId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    // Titled conversation shows the title, not the id.
+    expect(screen.getByText("What is LangGraph?")).toBeInTheDocument();
+    // Untitled falls back to the truncated id.
+    expect(screen.getByText("ffff0000")).toBeInTheDocument();
   });
 });
