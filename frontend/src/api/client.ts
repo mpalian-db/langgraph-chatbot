@@ -10,6 +10,7 @@ import type {
   ChatResponse,
   CollectionStats,
   ConversationDetailOut,
+  ConversationOverviewOut,
   CreateCollectionRequest,
   DocumentOut,
   IngestResponse,
@@ -170,6 +171,12 @@ export async function listDocuments(
 // ---------------------------------------------------------------------------
 // Conversations (debug/introspection)
 // ---------------------------------------------------------------------------
+
+export async function listConversations(
+  signal?: AbortSignal,
+): Promise<ConversationOverviewOut[]> {
+  return request<ConversationOverviewOut[]>("/api/conversations", { signal });
+}
 
 export async function getConversation(
   conversationId: string,

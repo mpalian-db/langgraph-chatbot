@@ -28,6 +28,18 @@ export interface UseChatReturn {
   conversationId: string | null;
   send: (query: string, collection?: string) => Promise<void>;
   clear: () => void;
+  /**
+   * Switch the chat to an existing server-side conversation by id.
+   *
+   * Aborts any in-flight stream, resets the visible messages list, and
+   * sets `conversationId` so the next send() carries history from that
+   * conversation (loaded server-side via the memory port). The visible
+   * thread starts empty -- the persisted history is available via the
+   * introspection endpoint and the "View history" panel; the in-memory
+   * `messages` array is the in-session view, not a hydrated mirror of
+   * stored turns.
+   */
+  loadConversation: (id: string) => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -140,5 +152,28 @@ export function useChat(): UseChatReturn {
     setActiveNode(null);
   }, []);
 
-  return { messages, loading, activeNode, error, conversationId, send, clear };
+  const loadConversation = useCallback((id: string) => {
+    // Same abort + reset shape as clear(), but instead of nulling the
+    // conversation id we set it to the supplied one. The visible message
+    // list still starts empty -- the persisted thread surfaces via the
+    // history panel; this hook is the in-session view only.
+    inFlightRef.current?.abort();
+    inFlightRef.current = null;
+    setMessages([]);
+    setConversationId(id);
+    setError(null);
+    setLoading(false);
+    setActiveNode(null);
+  }, []);
+
+  return {
+    messages,
+    loading,
+    activeNode,
+    error,
+    conversationId,
+    send,
+    clear,
+    loadConversation,
+  };
 }

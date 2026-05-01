@@ -211,6 +211,30 @@ describe("useChat conversation memory", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("loadConversation() sets the id without sending a message", async () => {
+    const { calls } = setupFetchCapture([resultEvent("hi", "conv-old")]);
+    const { result } = renderHook(() => useChat());
+
+    // Send once to establish a conversation.
+    await act(async () => {
+      await result.current.send("hi there");
+    });
+    await waitFor(() => expect(result.current.conversationId).toBe("conv-old"));
+    expect(result.current.messages).toHaveLength(2);
+
+    // Now switch to an existing different conversation. This should:
+    //  - reset the visible messages (in-session view)
+    //  - set conversationId to the supplied value
+    //  - NOT issue a new fetch (it's a state-only operation)
+    const fetchCountBefore = calls.length;
+    act(() => result.current.loadConversation("conv-existing"));
+
+    expect(result.current.conversationId).toBe("conv-existing");
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.loading).toBe(false);
+    expect(calls.length).toBe(fetchCountBefore);
+  });
+
   it("after clear(), the next send starts a new conversation", async () => {
     // First call returns conv-A; after clear, second call returns conv-B.
     const responses = [

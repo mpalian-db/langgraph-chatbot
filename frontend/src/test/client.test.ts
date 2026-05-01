@@ -6,6 +6,7 @@ import {
   getCollectionStats,
   deleteCollection,
   deleteConversation,
+  listConversations,
 } from "../api/client";
 
 function mockFetch(status: number, body: unknown) {
@@ -93,6 +94,26 @@ describe("API client", () => {
         "/api/collections/my-col",
         expect.objectContaining({ method: "DELETE" }),
       );
+    });
+  });
+
+  describe("listConversations", () => {
+    it("GETs /api/conversations and returns the array", async () => {
+      const overviews = [
+        {
+          conversation_id: "abc",
+          turn_count: 2,
+          has_summary: false,
+          last_updated_at: 1700000000,
+        },
+      ];
+      vi.stubGlobal("fetch", mockFetch(200, overviews));
+      const result = await listConversations();
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations",
+        expect.objectContaining({ signal: undefined }),
+      );
+      expect(result).toEqual(overviews);
     });
   });
 

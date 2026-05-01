@@ -13,8 +13,10 @@ import {
 } from "react";
 import { useChat } from "../hooks/useChat";
 import { useConversationDetail } from "../hooks/useConversationDetail";
+import { useConversationList } from "../hooks/useConversationList";
 import { deleteConversation, listCollections } from "../api/client";
 import ConversationHistoryPanel from "./ConversationHistoryPanel";
+import ConversationListSidebar from "./ConversationListSidebar";
 import TraceView from "./TraceView";
 import type { CitationOut, Message } from "../api/types";
 
@@ -119,8 +121,16 @@ function MessageBubble({ msg }: { msg: Message }) {
 // ---------------------------------------------------------------------------
 
 export default function ChatView() {
-  const { messages, loading, activeNode, error, conversationId, send, clear } =
-    useChat();
+  const {
+    messages,
+    loading,
+    activeNode,
+    error,
+    conversationId,
+    send,
+    clear,
+    loadConversation,
+  } = useChat();
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
@@ -134,6 +144,13 @@ export default function ChatView() {
     conversationId,
     messages.length,
   );
+
+  // Fetch the full conversation list for the left-rail sidebar. Refetched
+  // on activeId or message-count change so newly-created conversations
+  // and updated metadata (summarised badge, turn_count) appear without a
+  // manual reload.
+  const { overviews: conversationOverviews, refetch: refetchConversationList } =
+    useConversationList(`${conversationId ?? ""}-${messages.length}`);
 
   // Fetch collections on mount so the user can scope queries.
   useEffect(() => {
@@ -187,11 +204,22 @@ export default function ChatView() {
     // matching the "New conversation" affordance.
     clear();
     setHistoryPanelOpen(false);
-  }, [conversationId, clear]);
+    // Force the sidebar to re-pull immediately so the deleted row drops
+    // out without waiting for the next conversationId change.
+    refetchConversationList();
+  }, [conversationId, clear, refetchConversationList]);
 
   return (
     <div className="flex h-full">
-      {/* Left panel -- collection picker */}
+      {/* Leftmost panel -- conversation navigator. Always visible: empty
+          state shows a hint to start a new conversation. */}
+      <ConversationListSidebar
+        overviews={conversationOverviews}
+        activeConversationId={conversationId}
+        onSelect={loadConversation}
+      />
+
+      {/* Middle panel -- collection picker */}
       {collections.length > 0 && (
         <aside className="flex w-52 flex-col border-r border-gray-700">
           <div className="border-b border-gray-700 px-4 py-3">
