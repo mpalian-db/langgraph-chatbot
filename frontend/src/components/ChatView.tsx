@@ -12,10 +12,11 @@ import {
   useState,
 } from "react";
 import { useChat } from "../hooks/useChat";
-import { getConversation, listCollections } from "../api/client";
+import { useConversationDetail } from "../hooks/useConversationDetail";
+import { listCollections } from "../api/client";
 import ConversationHistoryPanel from "./ConversationHistoryPanel";
 import TraceView from "./TraceView";
-import type { CitationOut, ConversationDetailOut, Message } from "../api/types";
+import type { CitationOut, Message } from "../api/types";
 
 // ---------------------------------------------------------------------------
 // Route badge colour mapping
@@ -123,10 +124,16 @@ export default function ChatView() {
   const [input, setInput] = useState("");
   const [collections, setCollections] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
-  const [conversationDetail, setConversationDetail] =
-    useState<ConversationDetailOut | null>(null);
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch persisted conversation detail (summary + turns) for the header
+  // chip and the optional history panel. Refetches whenever a new message
+  // lands so the count stays in sync as the chat progresses.
+  const { detail: conversationDetail } = useConversationDetail(
+    conversationId,
+    messages.length,
+  );
 
   // Fetch collections on mount so the user can scope queries.
   useEffect(() => {
@@ -136,29 +143,6 @@ export default function ChatView() {
         // Backend may not be running -- leave empty.
       });
   }, []);
-
-  // Whenever the conversationId changes (or the latest message lands),
-  // refresh the introspection view so the header chip can show turn count
-  // and summary status. Refetching after each new message keeps the chip
-  // current as the user chats. We skip when there's no conversation yet.
-  useEffect(() => {
-    if (!conversationId) {
-      setConversationDetail(null);
-      return;
-    }
-    let cancelled = false;
-    getConversation(conversationId)
-      .then((detail) => {
-        if (!cancelled) setConversationDetail(detail);
-      })
-      .catch(() => {
-        // Endpoint may not be reachable; degrade silently rather than
-        // breaking the chat UI for a debug surface.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId, messages.length]);
 
   // Auto-scroll to newest message.
   useEffect(() => {

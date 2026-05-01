@@ -173,8 +173,13 @@ export async function listDocuments(
 
 export async function getConversation(
   conversationId: string,
+  signal?: AbortSignal,
 ): Promise<ConversationDetailOut> {
+  // Forward the signal so the hook can abort an in-flight fetch when its
+  // dependencies change. Without this, a fast user typing across multiple
+  // conversations could see a stale response clobber the fresh one.
   return request<ConversationDetailOut>(
     `/api/conversations/${encodeURIComponent(conversationId)}`,
+    { signal },
   );
 }
