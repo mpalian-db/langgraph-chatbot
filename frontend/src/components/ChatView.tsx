@@ -13,7 +13,7 @@ import {
 } from "react";
 import { useChat } from "../hooks/useChat";
 import { useConversationDetail } from "../hooks/useConversationDetail";
-import { listCollections } from "../api/client";
+import { deleteConversation, listCollections } from "../api/client";
 import ConversationHistoryPanel from "./ConversationHistoryPanel";
 import TraceView from "./TraceView";
 import type { CitationOut, Message } from "../api/types";
@@ -170,6 +170,25 @@ export default function ChatView() {
     [handleSubmit],
   );
 
+  const handleDeleteConversation = useCallback(async () => {
+    if (!conversationId) return;
+    // Confirm before destroying persisted state. Inline confirm() is
+    // intentionally low-tech for a debug surface; a proper modal can be
+    // added later if this graduates beyond dev.
+    if (!window.confirm("Delete this conversation? This cannot be undone.")) {
+      return;
+    }
+    try {
+      await deleteConversation(conversationId);
+    } catch {
+      // Silent: the next refetch will reflect server state regardless.
+    }
+    // Reset chat state so the next message starts a fresh conversation,
+    // matching the "New conversation" affordance.
+    clear();
+    setHistoryPanelOpen(false);
+  }, [conversationId, clear]);
+
   return (
     <div className="flex h-full">
       {/* Left panel -- collection picker */}
@@ -285,7 +304,10 @@ export default function ChatView() {
             summary plus verbatim post-boundary turns. Renders below the
             header so it's clearly tied to the active conversation. */}
         {conversationId && historyPanelOpen && conversationDetail && (
-          <ConversationHistoryPanel detail={conversationDetail} />
+          <ConversationHistoryPanel
+            detail={conversationDetail}
+            onDelete={handleDeleteConversation}
+          />
         )}
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">

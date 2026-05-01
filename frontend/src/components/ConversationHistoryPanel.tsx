@@ -13,6 +13,7 @@ import type { ConversationDetailOut } from "../api/types";
 
 interface Props {
   detail: ConversationDetailOut;
+  onDelete?: () => void;
 }
 
 const ROLE_COLOURS: Record<string, string> = {
@@ -20,12 +21,24 @@ const ROLE_COLOURS: Record<string, string> = {
   assistant: "border-indigo-700/40 bg-indigo-900/10",
 };
 
-export default function ConversationHistoryPanel({ detail }: Props) {
+export default function ConversationHistoryPanel({ detail, onDelete }: Props) {
   return (
     <div className="border-b border-gray-700 bg-gray-900/30 px-4 py-3">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        Persisted history
-      </h3>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Persisted history
+        </h3>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded border border-red-900/50 px-2 py-0.5 text-[10px] uppercase tracking-wide text-red-400 transition-colors hover:border-red-700 hover:text-red-300"
+            aria-label="Delete this conversation"
+          >
+            Delete
+          </button>
+        )}
+      </div>
 
       {/* Summary box: only present once summarisation has triggered. Fold-old-
           turns-into-text contract is documented in ADR 0002. */}

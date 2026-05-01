@@ -14,7 +14,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.api.dependencies import ConversationReaderDep
+from app.api.dependencies import ConversationReaderDep, ConversationWriterDep
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -81,3 +81,16 @@ async def get_conversation(
         summary=summary,
         turns=[TurnOut(role=t.role, content=t.content) for t in turns],
     )
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: str,
+    writer: ConversationWriterDep,
+) -> None:
+    """Erase a conversation: turns and rolling summary, atomically.
+
+    Idempotent: a missing conversation returns 204, matching the existing
+    pattern for `DELETE /collections/{name}/documents/{id}`. The caller's
+    desired end state ('absent') is already true."""
+    await writer.delete_conversation(conversation_id)

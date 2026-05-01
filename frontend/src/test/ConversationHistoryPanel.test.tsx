@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi } from "vitest";
 import ConversationHistoryPanel from "../components/ConversationHistoryPanel";
 import type { ConversationDetailOut } from "../api/types";
 
@@ -78,5 +79,23 @@ describe("ConversationHistoryPanel", () => {
     );
     expect(screen.getByText(/Earlier context here/i)).toBeInTheDocument();
     expect(screen.getByText("follow-up question")).toBeInTheDocument();
+  });
+
+  it("hides the delete button when onDelete is not provided", () => {
+    render(<ConversationHistoryPanel detail={detail()} />);
+    expect(
+      screen.queryByRole("button", { name: /delete this conversation/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the delete button and fires onDelete on click", async () => {
+    const onDelete = vi.fn();
+    const user = userEvent.setup();
+    render(<ConversationHistoryPanel detail={detail()} onDelete={onDelete} />);
+
+    const btn = screen.getByRole("button", { name: /delete this conversation/i });
+    await user.click(btn);
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
   });
 });

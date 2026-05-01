@@ -112,3 +112,14 @@ class ConversationWriterPort(Protocol):
         `load_summary_and_turns` will return only turns with id strictly
         greater than `summarised_through_turn_id`."""
         ...
+
+    async def delete_conversation(self, conversation_id: str) -> None:
+        """Remove every trace of a conversation: both the turn rows and the
+        summary row, atomically. Idempotent -- a missing conversation is
+        treated as already-deleted, never an error.
+
+        Atomicity matters: deleting the summary but leaving turns behind
+        would resurface those turns in the next `load_summary_and_turns`
+        as if the boundary had never existed, mixing summarised content
+        with the verbatim trail."""
+        ...

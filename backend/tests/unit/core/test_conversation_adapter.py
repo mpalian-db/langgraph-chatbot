@@ -283,6 +283,60 @@ async def test_summary_is_isolated_per_conversation(store: SQLiteConversationSto
     assert b_summary == "bravo summary"
 
 
+# ---------------------------------------------------------------------------
+# delete_conversation: atomic over both tables
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_conversation_removes_turns_and_summary(
+    store: SQLiteConversationStore,
+):
+    """Both turn rows and the summary row must be cleared in one go."""
+    await store.append("conv-1", "user", "first")
+    await store.append("conv-1", "assistant", "reply")
+    _, turns = await store.load_summary_and_turns("conv-1")
+    await store.upsert_summary("conv-1", "the summary", turns[-1].id)
+
+    await store.delete_conversation("conv-1")
+
+    summary, recent = await store.load_summary_and_turns("conv-1")
+    assert summary is None
+    assert recent == []
+
+
+async def test_delete_conversation_is_idempotent_for_unknown_id(
+    store: SQLiteConversationStore,
+):
+    """Calling delete on a never-seen conversation must not raise -- the
+    caller's desired end state ('absent') is already true."""
+    await store.delete_conversation("never-seen")  # must not raise
+
+    # Storage is still empty after the no-op.
+    overviews = await store.list_conversations()
+    assert overviews == []
+
+
+async def test_delete_conversation_does_not_touch_other_conversations(
+    store: SQLiteConversationStore,
+):
+    """Isolation: deleting conv-A must leave conv-B's data untouched."""
+    await store.append("conv-A", "user", "alpha")
+    await store.append("conv-B", "user", "bravo")
+    await store.upsert_summary("conv-B", "B's summary", 0)
+
+    await store.delete_conversation("conv-A")
+
+    # A is gone.
+    a_summary, a_turns = await store.load_summary_and_turns("conv-A")
+    assert a_summary is None and a_turns == []
+
+    # B is intact.
+    b_summary, b_turns = await store.load_summary_and_turns("conv-B")
+    assert b_summary == "B's summary"
+    assert len(b_turns) == 1
+    assert b_turns[0].content == "bravo"
+
+
 async def test_append_pair_is_atomic_on_failure(store: SQLiteConversationStore):
     """If the second insert fails, the first must be rolled back. Otherwise
     the conversation is left with an orphan user-without-reply row that

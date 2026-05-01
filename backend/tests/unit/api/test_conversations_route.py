@@ -15,6 +15,7 @@ from app.adapters.conversation.sqlite import SQLiteConversationStore
 from app.api.dependencies import (
     get_agents_config,
     get_conversation_reader,
+    get_conversation_writer,
     get_system_config,
 )
 from app.core.config.models import AgentsConfig, SystemConfig
@@ -32,6 +33,7 @@ def test_app(store: SQLiteConversationStore):
     app.dependency_overrides[get_system_config] = lambda: SystemConfig()
     app.dependency_overrides[get_agents_config] = lambda: AgentsConfig()
     app.dependency_overrides[get_conversation_reader] = lambda: store
+    app.dependency_overrides[get_conversation_writer] = lambda: store
     return app
 
 
@@ -141,3 +143,61 @@ async def test_list_and_detail_agree_on_summary_only_conversation(
     assert "summary-only-conv" in list_ids
     assert detail_resp.status_code == 200
     assert detail_resp.json()["summary"] == "all of it"
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/conversations/{id}
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_conversation_removes_turns_and_summary(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    await store.append("conv-doomed", "user", "first")
+    await store.append("conv-doomed", "assistant", "reply")
+    await store.upsert_summary("conv-doomed", "to be deleted", 0)
+
+    resp = await client.delete("/api/conversations/conv-doomed")
+
+    assert resp.status_code == 204
+    summary, turns = await store.load_summary_and_turns("conv-doomed")
+    assert summary is None and turns == []
+
+
+async def test_delete_conversation_is_idempotent_for_unknown_id(
+    client: AsyncClient,
+):
+    """Repeating DELETE on a never-seen id stays at 204. The desired end
+    state ('absent') is already true; surfacing 404 would force callers
+    to special-case the harmless no-op."""
+    resp = await client.delete("/api/conversations/never-seen")
+
+    assert resp.status_code == 204
+
+
+async def test_delete_does_not_touch_other_conversations(
+    client: AsyncClient, store: SQLiteConversationStore
+):
+    await store.append("conv-A", "user", "alpha")
+    await store.append("conv-B", "user", "bravo")
+
+    resp = await client.delete("/api/conversations/conv-A")
+    assert resp.status_code == 204
+
+    list_ids = [row["conversation_id"] for row in (await client.get("/api/conversations")).json()]
+    assert "conv-A" not in list_ids
+    assert "conv-B" in list_ids
+
+
+async def test_delete_then_get_returns_404(client: AsyncClient, store: SQLiteConversationStore):
+    """The lifecycle: create via append, delete via DELETE, then GET 404s.
+    Pins that the introspection endpoint sees the deletion immediately."""
+    await store.append("conv-x", "user", "hi")
+    detail_before = await client.get("/api/conversations/conv-x")
+    assert detail_before.status_code == 200
+
+    delete_resp = await client.delete("/api/conversations/conv-x")
+    assert delete_resp.status_code == 204
+
+    detail_after = await client.get("/api/conversations/conv-x")
+    assert detail_after.status_code == 404

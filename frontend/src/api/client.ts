@@ -183,3 +183,11 @@ export async function getConversation(
     { signal },
   );
 }
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  // Idempotent on the backend -- a missing id still returns 204.
+  return request<void>(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    { method: "DELETE" },
+  );
+}

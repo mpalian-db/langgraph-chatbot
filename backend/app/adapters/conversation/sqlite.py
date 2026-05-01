@@ -266,3 +266,26 @@ class SQLiteConversationStore:
                 (conversation_id, summary, summarised_through_turn_id, time.time()),
             )
             self._conn.commit()
+
+    async def delete_conversation(self, conversation_id: str) -> None:
+        await asyncio.to_thread(self._delete_conversation_sync, conversation_id)
+
+    def _delete_conversation_sync(self, conversation_id: str) -> None:
+        # Atomic across both tables: DELETE FROM conversation_turns and
+        # DELETE FROM conversation_summaries in a single transaction. If
+        # either fails, the other rolls back so we can never leave an
+        # orphan summary pointing at deleted turns (or the inverse).
+        with self._lock:
+            try:
+                self._conn.execute(
+                    "DELETE FROM conversation_turns WHERE conversation_id = ?",
+                    (conversation_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM conversation_summaries WHERE conversation_id = ?",
+                    (conversation_id,),
+                )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise

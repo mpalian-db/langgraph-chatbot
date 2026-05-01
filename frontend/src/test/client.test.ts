@@ -5,6 +5,7 @@ import {
   createCollection,
   getCollectionStats,
   deleteCollection,
+  deleteConversation,
 } from "../api/client";
 
 function mockFetch(status: number, body: unknown) {
@@ -90,6 +91,26 @@ describe("API client", () => {
       await deleteCollection("my-col");
       expect(fetch).toHaveBeenCalledWith(
         "/api/collections/my-col",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  describe("deleteConversation", () => {
+    it("sends DELETE to /api/conversations/{id}", async () => {
+      vi.stubGlobal("fetch", mockFetch(204, null));
+      await deleteConversation("conv-abc");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations/conv-abc",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+
+    it("encodes conversation ids that contain reserved characters", async () => {
+      vi.stubGlobal("fetch", mockFetch(204, null));
+      await deleteConversation("conv with/slash");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations/conv%20with%2Fslash",
         expect.objectContaining({ method: "DELETE" }),
       );
     });
