@@ -20,3 +20,5 @@ Numbered files like `NNNN-short-title.md`, with the front matter:
 
 - [0001 -- Per-node LLM provider override](./0001-per-node-llm-provider.md)
 - [0002 -- Conversation memory architecture](./0002-conversation-memory.md)
+- [0003 -- Verifier grounding strategy](./0003-verifier-grounding-strategy.md)
+- [0004 -- Atomic conversation persistence](./0004-atomic-conversation-persistence.md)
