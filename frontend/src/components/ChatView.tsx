@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useChat } from "../hooks/useChat";
 import { getConversation, listCollections } from "../api/client";
+import ConversationHistoryPanel from "./ConversationHistoryPanel";
 import TraceView from "./TraceView";
 import type { CitationOut, ConversationDetailOut, Message } from "../api/types";
 
@@ -124,6 +125,7 @@ export default function ChatView() {
   const [selectedCollection, setSelectedCollection] = useState("");
   const [conversationDetail, setConversationDetail] =
     useState<ConversationDetailOut | null>(null);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch collections on mount so the user can scope queries.
@@ -273,14 +275,33 @@ export default function ChatView() {
                 </>
               )}
             </div>
-            <button
-              type="button"
-              onClick={clear}
-              className="rounded border border-gray-700 px-2 py-1 text-gray-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
-            >
-              New conversation
-            </button>
+            <div className="flex items-center gap-2">
+              {conversationDetail && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryPanelOpen((v) => !v)}
+                  className="rounded border border-gray-700 px-2 py-1 text-gray-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
+                  aria-expanded={historyPanelOpen}
+                >
+                  {historyPanelOpen ? "Hide" : "View"} history
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={clear}
+                className="rounded border border-gray-700 px-2 py-1 text-gray-400 transition-colors hover:border-indigo-500 hover:text-indigo-400"
+              >
+                New conversation
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* History panel surfaces what's persisted server-side -- the rolling
+            summary plus verbatim post-boundary turns. Renders below the
+            header so it's clearly tied to the active conversation. */}
+        {conversationId && historyPanelOpen && conversationDetail && (
+          <ConversationHistoryPanel detail={conversationDetail} />
         )}
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
