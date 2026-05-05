@@ -14,4 +14,4 @@ binding = "VECTORIZE"
 index_name = "langgraph-chatbot"
 
 [python_modules]
-excludes = ["**/*.pyc", "**/__pycache__"]
+excludes = ["**/*.pyc", "**/__pycache__", "**/*.pyi"]

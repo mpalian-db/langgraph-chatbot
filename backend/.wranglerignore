@@ -1,0 +1,15 @@
+.venv
+.venv-workers
+tests
+__pycache__
+*.pyc
+*.pyo
+*.pyi
+corpus
+data
+docs
+pyproject.toml
+pyproject.local.toml
+pyproject.deploy.toml
+uv.lock
+README.md
