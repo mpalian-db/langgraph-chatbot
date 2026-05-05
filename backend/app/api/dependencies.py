@@ -13,8 +13,11 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.adapters.embeddings.ollama import OllamaEmbeddingAdapter
 from app.adapters.llm.anthropic import AnthropicLLMAdapter
+from app.adapters.llm.ollama import OllamaLLMAdapter
 from app.adapters.storage.local import LocalFileStorageAdapter
+from app.adapters.vectorstore.qdrant import QdrantVectorStoreAdapter
 from app.core.config.loader import load_agents_config, load_system_config
 from app.core.config.models import AgentsConfig, SystemConfig
 from app.ports.embedding import EmbeddingPort
@@ -57,8 +60,6 @@ def get_llm(
 ) -> LLMPort:
     provider = system_config.llm.provider
     if provider == "ollama":
-        from app.adapters.llm.ollama import OllamaLLMAdapter
-
         return OllamaLLMAdapter(base_url=system_config.llm.ollama_base_url)
     if provider == "anthropic":
         return AnthropicLLMAdapter()
@@ -71,8 +72,6 @@ def get_vector_store(
 ) -> VectorStorePort:
     provider = system_config.vectorstore.provider
     if provider == "qdrant":
-        from app.adapters.vectorstore.qdrant import QdrantVectorStoreAdapter
-
         return QdrantVectorStoreAdapter(url=system_config.vectorstore.qdrant_url)
     if provider == "vectorize":
         import os
@@ -92,10 +91,10 @@ def get_vector_store(
 def get_collection_port(
     system_config: SystemConfig = Depends(get_system_config),
 ) -> CollectionPort:
+    # The Qdrant adapter implements both VectorStorePort and CollectionPort.
+    # The Vectorize adapter also implements both -- index provisioned externally.
     provider = system_config.vectorstore.provider
     if provider == "qdrant":
-        from app.adapters.vectorstore.qdrant import QdrantVectorStoreAdapter
-
         return QdrantVectorStoreAdapter(url=system_config.vectorstore.qdrant_url)
     if provider == "vectorize":
         import os
@@ -117,8 +116,6 @@ def get_embedding(
 ) -> EmbeddingPort:
     provider = system_config.embeddings.provider
     if provider == "ollama":
-        from app.adapters.embeddings.ollama import OllamaEmbeddingAdapter
-
         return OllamaEmbeddingAdapter(
             model=system_config.embeddings.ollama_model,
             base_url=system_config.embeddings.ollama_base_url,
@@ -138,12 +135,7 @@ def get_embedding(
     raise ValueError(msg)
 
 
-def get_storage(
-    system_config: SystemConfig = Depends(get_system_config),
-) -> DocumentStoragePort:
-    if system_config.environment.mode == "cloudflare":
-        msg = "Document storage on CF requires R2 adapter (not yet implemented)"
-        raise NotImplementedError(msg)
+def get_storage() -> DocumentStoragePort:
     storage_dir = _PROJECT_ROOT / "data" / "documents"
     return LocalFileStorageAdapter(base_dir=storage_dir)
 

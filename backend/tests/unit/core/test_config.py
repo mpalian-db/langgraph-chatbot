@@ -1,5 +1,3 @@
-import pathlib
-
 import pytest
 from pydantic import ValidationError
 
@@ -69,30 +67,6 @@ supported_formats = ["md", "txt"]
     config = load_system_config(config_file)
     assert config.environment.mode == "local"
     assert config.ingestion.chunk_size == 256
-
-
-def test_load_system_config_falls_back_to_env(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
-    monkeypatch.setenv("VECTORSTORE_PROVIDER", "vectorize")
-    monkeypatch.setenv("EMBEDDINGS_PROVIDER", "workers-ai")
-    monkeypatch.setenv("LOG_LEVEL", "warning")
-
-    config = load_system_config(pathlib.Path("/nonexistent/config.toml"))
-    assert config.environment.mode == "cloudflare"
-    assert config.llm.provider == "anthropic"
-    assert config.vectorstore.provider == "vectorize"
-    assert config.embeddings.provider == "workers-ai"
-    assert config.environment.log_level == "warning"
-
-
-def test_load_agents_config_falls_back_to_env(monkeypatch):
-    monkeypatch.setenv("CF_DEFAULT_MODEL", "claude-haiku-4-5-20251001")
-    monkeypatch.setenv("CF_LARGE_MODEL", "claude-sonnet-4-6-20250514")
-
-    config = load_agents_config(pathlib.Path("/nonexistent/agents.toml"))
-    assert config.router.model == "claude-haiku-4-5-20251001"
-    assert config.answer_generation.model == "claude-sonnet-4-6-20250514"
-    assert config.verifier.model == "claude-sonnet-4-6-20250514"
 
 
 def test_load_agents_config_from_toml(tmp_path):

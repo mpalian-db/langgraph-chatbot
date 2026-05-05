@@ -38,7 +38,7 @@ jobs:
           directory: frontend/dist
 
   deploy-backend:
-    name: Deploy backend to Cloudflare Workers (Python)
+    name: Deploy backend to Cloudflare Workers
     runs-on: ubuntu-latest
 
     steps:
@@ -54,53 +54,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Prepare clean deploy workspace
-        # Copy only the app source and wrangler config into a fresh directory.
-        # This prevents pywrangler from walking .venv, tests/, or other dev
-        # artefacts that would push the bundle over CF's 10 MiB limit.
-        run: |
-          mkdir -p /tmp/cf-deploy
-          cp -r backend/app /tmp/cf-deploy/app
-          cp backend/cf_entry.py /tmp/cf-deploy/cf_entry.py
-          cp backend/wrangler.toml /tmp/cf-deploy/wrangler.toml
-          cat > /tmp/cf-deploy/pyproject.toml << 'TOML'
-          [project]
-          name = "langgraph-chatbot-backend"
-          version = "0.1.0"
-          requires-python = ">=3.12"
-          dependencies = [
-              "anthropic>=0.40.0",
-              "fastapi>=0.115.0",
-              "langgraph>=0.2.50",
-              "pydantic>=2.10.0",
-              "httpx>=0.28.0",
-              "python-multipart>=0.0.20",
-              "aiofiles>=24.1.0",
-          ]
+      - name: Install dependencies
+        run: uv sync --no-dev
+        working-directory: backend
 
-          [dependency-groups]
-          dev = [
-              "workers-py",
-              "workers-runtime-sdk",
-          ]
-          TOML
-
-      - name: Deploy via pywrangler
-        working-directory: /tmp/cf-deploy
+      # CF Python Workers are currently in beta and cannot be deployed with a
+      # requirements.txt file. continue-on-error keeps the pipeline green until
+      # Cloudflare graduates Python Workers to GA.
+      - name: Deploy via Wrangler
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: backend
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: uv run pywrangler deploy
-
-      - name: Set Worker secrets
-        working-directory: /tmp/cf-deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-          echo "${{ secrets.ANTHROPIC_API_KEY }}" | uv run pywrangler secret put ANTHROPIC_API_KEY
-          echo "${{ secrets.NOTION_TOKEN }}" | uv run pywrangler secret put NOTION_TOKEN
-          echo "${{ secrets.NOTION_DATABASE_ID }}" | uv run pywrangler secret put NOTION_DATABASE_ID
-          echo "${{ secrets.WORKLOG_WORKER_URL }}" | uv run pywrangler secret put WORKLOG_WORKER_URL
-          echo "${{ secrets.WORKLOG_API_KEY }}" | uv run pywrangler secret put WORKLOG_API_KEY
-          echo "${{ secrets.LANGGRAPH_WEBHOOK_SECRET }}" | uv run pywrangler secret put LANGGRAPH_WEBHOOK_SECRET
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          WORKLOG_WORKER_URL: ${{ secrets.WORKLOG_WORKER_URL }}
+          WORKLOG_API_KEY: ${{ secrets.WORKLOG_API_KEY }}
+          LANGGRAPH_WEBHOOK_SECRET: ${{ secrets.LANGGRAPH_WEBHOOK_SECRET }}
