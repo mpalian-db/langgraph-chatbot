@@ -230,7 +230,7 @@ async def test_webhook_rejects_invalid_secret(client: AsyncClient) -> None:
 
     from app.core.config.loader import load_system_config
 
-    config_path = pathlib.Path(__file__).resolve().parents[4] / "config" / "config.toml"
+    config_path = pathlib.Path(__file__).resolve().parents[3] / "config" / "config.toml"
     config = load_system_config(config_path)
     if not config.webhooks.edgenotes_secret:
         pytest.skip("No webhook secret configured -- secret validation not active")

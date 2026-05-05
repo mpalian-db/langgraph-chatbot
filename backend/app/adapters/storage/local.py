@@ -21,8 +21,10 @@ class LocalFileStorageAdapter:
         return str(path)
 
     async def retrieve(self, path: str) -> bytes:
-        """Retrieve content from a file."""
+        """Retrieve content from a file (relative to base_dir or absolute)."""
         p = pathlib.Path(path)
+        if not p.is_absolute():
+            p = self._base / p
         if not p.exists():
             raise FileNotFoundError(path)
         async with aiofiles.open(p, "rb") as f:
