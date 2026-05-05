@@ -1,0 +1,11 @@
+"""Cloudflare Workers entry point -- bridges the Workers runtime to our FastAPI app."""
+
+import asgi
+from workers import WorkerEntrypoint
+
+from app.main import app
+
+
+class Default(WorkerEntrypoint):
+    async def fetch(self, request):
+        return await asgi.fetch(app, request, self.env)
