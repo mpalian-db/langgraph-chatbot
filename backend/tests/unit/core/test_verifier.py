@@ -60,12 +60,12 @@ def test_citation_coverage_all_cited():
         "LangGraph is a stateful agent framework [chunk-1]."
         " It supports conditional edges [chunk-2]."
     )
-    assert _citation_coverage(text) == pytest.approx(1.0)
+    assert _citation_coverage(text, valid_ids=["chunk-1", "chunk-2"]) == pytest.approx(1.0)
 
 
 def test_citation_coverage_none_cited():
     text = "LangGraph is a stateful agent framework. It supports conditional edges and loops."
-    assert _citation_coverage(text) == pytest.approx(0.0)
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(0.0)
 
 
 def test_citation_coverage_partial():
@@ -75,19 +75,66 @@ def test_citation_coverage_partial():
         "It was created to solve complex workflows. "
         "It supports both sync and async execution."
     )
-    assert _citation_coverage(text) == pytest.approx(1 / 3)
+    assert _citation_coverage(text, valid_ids=["abc-1"]) == pytest.approx(1 / 3)
 
 
 def test_citation_coverage_empty_or_trivial_sentences_returns_one():
     # Short fragments under 5 words should not count as non-trivial.
-    assert _citation_coverage("") == pytest.approx(1.0)
-    assert _citation_coverage("OK. Yes. No.") == pytest.approx(1.0)
+    assert _citation_coverage("", valid_ids=[]) == pytest.approx(1.0)
+    assert _citation_coverage("OK. Yes. No.", valid_ids=[]) == pytest.approx(1.0)
 
 
 def test_citation_coverage_ignores_abbreviations_and_decimals():
     # "e.g." and "0.85" should not be treated as sentence boundaries.
     text = "See e.g. LangGraph with score 0.85 for building agents [chunk-1]."
-    assert _citation_coverage(text) == pytest.approx(1.0)
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# citation_coverage rejects hallucinated and structural false-positive IDs
+# ---------------------------------------------------------------------------
+
+
+def test_citation_coverage_rejects_hallucinated_ids():
+    """Coverage must validate bracketed tokens against the real chunk IDs.
+    A bracketed string that looks like a citation but does not match any
+    retrieved chunk is not a real citation."""
+    text = "LangGraph is a stateful framework [hallucinated-id-not-in-chunks]."
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(0.0)
+
+
+def test_citation_coverage_ignores_markdown_links():
+    """`[text](url)` is a markdown hyperlink, not a citation. The bracketed
+    token may even equal a real chunk id by coincidence in `text`, but the
+    presence of `(` immediately after the closing bracket disambiguates."""
+    text = "See [click here](https://example.com) for details on LangGraph."
+    # No real citations, even though "click here" is a bracketed token.
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(0.0)
+
+
+def test_citation_coverage_handles_nested_brackets():
+    """Nested brackets like `[[chunk-1]]` (wiki-link style) should still
+    extract the real id `chunk-1` and count as a citation."""
+    text = "LangGraph is a stateful agent framework [[chunk-1]]."
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(1.0)
+
+
+def test_citation_coverage_ignores_inline_code_spans():
+    """A bracketed id wrapped in backticks is part of code/syntax discussion,
+    not a real citation. `[chunk-1]` does not ground a claim."""
+    text = "To cite a chunk, write `[chunk-1]` like that in your answer."
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(0.0)
+
+
+def test_citation_coverage_ignores_fenced_code_blocks():
+    """Bracketed ids inside fenced code blocks are example syntax, not
+    citations of the surrounding answer."""
+    text = (
+        "LangGraph supports stateful agents and conditional edges. "
+        "Here is example syntax:\n```\nresult = invoke([chunk-1])\n```"
+    )
+    # The first sentence has no citation. The fenced block must not count.
+    assert _citation_coverage(text, valid_ids=["chunk-1"]) == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------

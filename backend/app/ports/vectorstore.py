@@ -25,6 +25,14 @@ class VectorStorePort(Protocol):
 
     async def delete(self, collection: str, ids: list[str]) -> None: ...
 
+    async def get_chunk(self, collection: str, chunk_id: str) -> Chunk | None:
+        """Retrieve a single chunk by its id. Returns None when not found.
+
+        This is the read-by-id counterpart to `delete()` -- useful for the
+        `GET /collections/{name}/documents/{id}` endpoint where we want
+        404 semantics rather than the current "list and filter" approach."""
+        ...
+
     async def list_documents(
         self,
         collection: str,

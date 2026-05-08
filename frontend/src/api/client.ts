@@ -9,6 +9,8 @@ import type {
   ChatRequest,
   ChatResponse,
   CollectionStats,
+  ConversationDetailOut,
+  ConversationOverviewOut,
   CreateCollectionRequest,
   DocumentOut,
   IngestResponse,
@@ -68,8 +70,13 @@ export async function sendChatMessage(
 
 export async function* sendChatStream(
   body: ChatRequest,
+  signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const res = await fetch("/api/chat/stream", jsonBody(body));
+  // Forward the signal so the underlying TCP/fetch can be aborted mid-stream.
+  // Without this, a hung backend would leave the UI permanently in `loading`
+  // state with no escape path -- see the "New conversation" affordance in
+  // useChat.ts which calls AbortController.abort() to recover.
+  const res = await fetch("/api/chat/stream", { ...jsonBody(body), signal });
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
     throw new ApiError(res.status, text || res.statusText);
@@ -158,5 +165,36 @@ export async function listDocuments(
   });
   return request<DocumentOut[]>(
     `/api/collections/${encodeURIComponent(collection)}/documents?${params}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Conversations (debug/introspection)
+// ---------------------------------------------------------------------------
+
+export async function listConversations(
+  signal?: AbortSignal,
+): Promise<ConversationOverviewOut[]> {
+  return request<ConversationOverviewOut[]>("/api/conversations", { signal });
+}
+
+export async function getConversation(
+  conversationId: string,
+  signal?: AbortSignal,
+): Promise<ConversationDetailOut> {
+  // Forward the signal so the hook can abort an in-flight fetch when its
+  // dependencies change. Without this, a fast user typing across multiple
+  // conversations could see a stale response clobber the fresh one.
+  return request<ConversationDetailOut>(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    { signal },
+  );
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  // Idempotent on the backend -- a missing id still returns 204.
+  return request<void>(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    { method: "DELETE" },
   );
 }

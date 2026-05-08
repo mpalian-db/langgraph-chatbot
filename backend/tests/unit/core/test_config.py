@@ -1,3 +1,5 @@
+import pathlib
+
 import pytest
 from pydantic import ValidationError
 
@@ -30,6 +32,41 @@ def test_verifier_checks_defaults():
     assert "score_threshold" in config.verifier.checks
     assert "support_analysis" in config.verifier.checks
     assert "citation_coverage" in config.verifier.checks
+
+
+def _find_project_root() -> pathlib.Path:
+    """Walk up from this file until a directory containing both `config/` and
+    `pyproject.toml` is found. More robust than hardcoded `parents[N]` -- it
+    survives test relocations and split-out backend layouts."""
+    here = pathlib.Path(__file__).resolve()
+    for candidate in [here, *here.parents]:
+        if (
+            (candidate / "config" / "agents.toml").is_file()
+            and (candidate / "pyproject.toml").is_file()
+            or (candidate / "config" / "agents.toml").is_file()
+            and (candidate / "backend" / "pyproject.toml").is_file()
+        ):
+            return candidate
+    msg = "could not find project root with config/agents.toml"
+    raise RuntimeError(msg)
+
+
+def test_production_thresholds_align_retrieval_with_verifier():
+    """Invariant: retrieval.score_threshold >= verifier.score_threshold.
+
+    A chunk that passes retrieval must not be refused by the verifier on
+    score alone -- otherwise the answer-generation LLM call is burnt for a
+    verifier refusal that was inevitable from the moment of retrieval. If
+    this test fails, either lower the verifier threshold or raise retrieval
+    to match. See agents.toml for the rationale."""
+    project_root = _find_project_root()
+    config = load_agents_config(project_root / "config" / "agents.toml")
+
+    assert config.retrieval.score_threshold >= config.verifier.score_threshold, (
+        f"retrieval threshold {config.retrieval.score_threshold} is below "
+        f"verifier threshold {config.verifier.score_threshold} -- "
+        "answer-generation LLM call would be burnt for inevitable refusal"
+    )
 
 
 def test_load_system_config_from_toml(tmp_path):

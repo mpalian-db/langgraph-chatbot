@@ -89,3 +89,40 @@ async def list_documents(
         )
         for c in chunks
     ]
+
+
+@router.get("/{collection}/documents/{chunk_id}", response_model=DocumentOut)
+async def get_document(
+    collection: str,
+    chunk_id: str,
+    vectorstore: VectorStoreDep,
+) -> DocumentOut:
+    """Retrieve a single chunk by its id. Returns 404 when not found.
+
+    Note on naming: the system stores chunks (sub-document pieces produced by
+    the chunker), not whole documents -- a single uploaded file becomes many
+    chunks. The path uses `documents` for spec compatibility but the unit of
+    retrieval is a chunk."""
+    chunk = await vectorstore.get_chunk(collection, chunk_id)
+    if chunk is None:
+        raise HTTPException(
+            status_code=404, detail=f"chunk {chunk_id!r} not found in {collection!r}"
+        )
+    return DocumentOut(
+        id=chunk.id,
+        text=chunk.text,
+        collection=chunk.collection,
+        metadata=chunk.metadata,
+    )
+
+
+@router.delete("/{collection}/documents/{chunk_id}", status_code=204)
+async def delete_document(
+    collection: str,
+    chunk_id: str,
+    vectorstore: VectorStoreDep,
+) -> None:
+    """Delete a single chunk by id. Idempotent -- a missing chunk is treated
+    as already-deleted (204), matching how vectorstore.delete() handles
+    unknown ids."""
+    await vectorstore.delete(collection, [chunk_id])
