@@ -56,6 +56,24 @@ class QdrantVectorStoreAdapter:
     async def delete(self, collection: str, ids: list[str]) -> None:
         await self._client.delete(collection_name=collection, points_selector=ids)  # type: ignore[arg-type]
 
+    async def get_chunk(self, collection: str, chunk_id: str) -> Chunk | None:
+        points = await self._client.retrieve(
+            collection_name=collection,
+            ids=[chunk_id],
+            with_payload=True,
+            with_vectors=False,
+        )
+        if not points:
+            return None
+        p = points[0]
+        payload = p.payload or {}
+        return Chunk(
+            id=str(p.id),
+            text=payload.get("text", ""),
+            collection=collection,
+            metadata={k: v for k, v in payload.items() if k not in ("text", "chunk_id")},
+        )
+
     async def create(self, name: str, vector_size: int) -> None:
         await self._client.create_collection(
             collection_name=name,

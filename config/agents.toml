@@ -21,7 +21,12 @@ max_tokens = 2048
 [retrieval]
 enabled = true
 top_k = 10
-score_threshold = 0.5
+# Aligned with verifier.score_threshold below: if a chunk is good enough to
+# retrieve, it is good enough to ground an answer. This eliminates the dead
+# band where chunks would pass retrieval only to be refused by the verifier
+# after wasting an answer-generation LLM call. The verifier's score_threshold
+# check remains as defence-in-depth.
+score_threshold = 0.55
 rerank = true
 default_collection = "langgraph-docs"
 
@@ -41,15 +46,28 @@ max_tokens = 2048
 
 [verifier]
 enabled = true
+# Default uses the system LLM (Ollama for local dev). To enable LLM-based
+# support_analysis with reliable structured output, override here:
+#   provider = "anthropic"
+#   model = "claude-haiku-4-5-20251001"
+# That requires ANTHROPIC_API_KEY in the environment. The graph is built
+# per-request inside the chat route, so a missing key surfaces as a 500 on
+# the first chat, with the message "agent config requests LLM provider
+# 'anthropic' but it is not registered" in the response body. (A future
+# improvement is to validate the registry against the loaded config at
+# application startup so misconfiguration fails before the first request.)
 model = "llama3.1:8b"
-# Anthropic alternative: model = "claude-sonnet-4-6-20250514"
 score_threshold = 0.55
-citation_coverage_min = 0.8
+# Tuned to 0.5 so answers pass when most non-trivial sentences cite, without
+# every "explaining" answer being refused. Bump to 0.8 for stricter grounding
+# once a more capable model is wired for support_analysis.
+citation_coverage_min = 0.5
 max_retries = 2
-# Local Ollama models are not reliable enough for LLM-based grounding checks.
-# Only score_threshold (deterministic) is used locally. Re-enable support_analysis
-# and citation_coverage when switching to Anthropic models.
-checks = ["score_threshold"]
+# score_threshold + citation_coverage are deterministic. support_analysis is
+# LLM-based; keep it disabled while the verifier runs on Ollama (unreliable
+# structured output) and re-enable it together with the Anthropic override
+# above for production-grade grounding.
+checks = ["score_threshold", "citation_coverage"]
 
 [tool_agent]
 enabled = true
@@ -65,6 +83,19 @@ allowed_tools = [
     "delete_document",
 ]
 max_tool_calls = 5
+
+[summariser]
+# Conversation memory summariser: triggered lazily on read when a
+# conversation's unsummarised tail exceeds `summarise_threshold` turns.
+# Folds everything except the last `keep_recent` turns into a rolling
+# summary so distant context survives compression.
+enabled = true
+model = "llama3.2:3b"
+# Anthropic alternative: provider = "anthropic", model = "claude-haiku-4-5-20251001"
+keep_recent = 10
+summarise_threshold = 20
+prompt = """Summarise the following conversation between a user and an assistant. Preserve facts, decisions, and context that future turns may need. Be concise but do not omit names, numbers, or specifics. If a prior summary is provided, integrate the new turns into it rather than restarting."""
+max_tokens = 512
 
 [worklog_agent]
 enabled = true

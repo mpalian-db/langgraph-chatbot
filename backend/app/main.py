@@ -8,8 +8,22 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.dependencies import get_collection_port, get_system_config
-from app.api.routes import chat, collections, documents, notion, system, webhooks
+from app.api.dependencies import (
+    get_agents_config,
+    get_collection_port,
+    get_llm_registry,
+    get_system_config,
+)
+from app.api.routes import (
+    chat,
+    collections,
+    conversations,
+    documents,
+    notion,
+    system,
+    webhooks,
+)
+from app.core.graph.graph import validate_llm_providers
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +32,34 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan: configure tracing on startup, clean up on shutdown."""
     config = get_system_config()
+
+    # Validate LLM provider wiring against agents.toml at startup so a missing
+    # ANTHROPIC_API_KEY (or any other unregistered provider override) crashes
+    # the app immediately with a clear message, instead of returning 500 on
+    # the first chat request.
+    agents_config = get_agents_config()
+    llm_registry = get_llm_registry(system_config=config)
+    # Skip agents that won't be wired into the graph at runtime -- otherwise a
+    # bad worklog_agent.provider would crash startup even when WORKLOG_WORKER_URL
+    # is unset and the node is never instantiated.
+    import os as _os
+
+    skip_agents: set[str] = set()
+    if not _os.environ.get("WORKLOG_WORKER_URL"):
+        skip_agents.add("worklog_agent")
+
+    validate_llm_providers(
+        agents_config=agents_config,
+        llms=llm_registry,
+        default_provider=config.llm.provider,
+        skip_agents=skip_agents,
+    )
+    logger.info(
+        "LLM provider validation passed (registry: %s, default: %s, skipped: %s)",
+        sorted(llm_registry.keys()),
+        config.llm.provider,
+        sorted(skip_agents) or "none",
+    )
 
     # Initialise Langfuse tracing when enabled.
     if config.tracing.langfuse_enabled:
@@ -84,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api")
     app.include_router(collections.router, prefix="/api")
     app.include_router(documents.router, prefix="/api")
+    app.include_router(conversations.router, prefix="/api")
     app.include_router(system.router, prefix="/api")
     app.include_router(webhooks.router, prefix="/api")
     app.include_router(notion.router, prefix="/api")

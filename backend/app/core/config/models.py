@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class _StrictModel(BaseModel):
@@ -75,9 +75,16 @@ class SystemConfig(_StrictModel):
     webhooks: WebhooksConfig = WebhooksConfig()
 
 
+# A node config may set `provider` to override the system default LLM (e.g. the
+# verifier may run on Anthropic while the rest of the graph stays on Ollama).
+# `None` means "use system default", set in config/config.toml under [llm].
+ProviderOverride = Literal["ollama", "anthropic"] | None
+
+
 class RouterConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     prompt: str = ""
     routes: list[str] = ["chat", "rag", "tool"]
 
@@ -85,6 +92,7 @@ class RouterConfig(_StrictModel):
 class ChatAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     system_prompt: str = "You are a helpful assistant. Answer clearly and concisely."
     max_tokens: int = 2048
 
@@ -100,6 +108,7 @@ class RetrievalConfig(_StrictModel):
 class AnswerGenerationConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.1:8b"
+    provider: ProviderOverride = None
     prompt_template: str = (
         "Answer the user's question using only the evidence provided below. "
         "Cite chunk IDs inline where you use them.\n\nEvidence:\n{evidence}\n\nQuestion: {query}"
@@ -110,6 +119,7 @@ class AnswerGenerationConfig(_StrictModel):
 class VerifierConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.1:8b"
+    provider: ProviderOverride = None
     score_threshold: float = 0.75
     citation_coverage_min: float = 0.8
     max_retries: int = 2
@@ -119,6 +129,7 @@ class VerifierConfig(_StrictModel):
 class ToolAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     system_prompt: str = (
         "You are a tool-using assistant. Use the available tools to answer the user's request. "
         "Always call the appropriate tool first, then report what the tool returned. "
@@ -128,9 +139,57 @@ class ToolAgentConfig(_StrictModel):
     max_tool_calls: int = 5
 
 
+class SummariserConfig(_StrictModel):
+    """Conversation memory summariser.
+
+    Triggered lazily on read when the unsummarised tail exceeds
+    `summarise_threshold` turns. Folds everything except the last
+    `keep_recent` turns into a rolling summary, leaving the recent window
+    verbatim for high-fidelity context."""
+
+    enabled: bool = True
+    model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
+    # Number of trailing turns kept verbatim (not folded into the summary).
+    # Must be >= 1 -- keeping zero recent turns would leave the chat agent
+    # with no fresh context immediately after a summarisation round.
+    keep_recent: int = 10
+    # When the unsummarised tail exceeds this length, summarisation triggers
+    # on the next load. Must be >= keep_recent so there is always at least
+    # one older turn to fold into the summary when the trigger fires --
+    # otherwise the slice `all_recent[:-keep_recent]` is empty.
+    summarise_threshold: int = 20
+    prompt: str = (
+        "Summarise the following conversation between a user and an "
+        "assistant. Preserve facts, decisions, and context that future "
+        "turns may need. Be concise but do not omit names, numbers, or "
+        "specifics. If a prior summary is provided, integrate the new "
+        "turns into it rather than restarting."
+    )
+    max_tokens: int = 512
+
+    @model_validator(mode="after")
+    def _check_window_invariants(self) -> SummariserConfig:
+        if self.keep_recent < 1:
+            msg = "keep_recent must be at least 1"
+            raise ValueError(msg)
+        if self.summarise_threshold < self.keep_recent:
+            msg = (
+                f"summarise_threshold ({self.summarise_threshold}) must be "
+                f">= keep_recent ({self.keep_recent}); otherwise the trigger "
+                "fires when there are no older turns to summarise"
+            )
+            raise ValueError(msg)
+        if self.max_tokens < 1:
+            msg = "max_tokens must be at least 1"
+            raise ValueError(msg)
+        return self
+
+
 class WorklogAgentConfig(_StrictModel):
     enabled: bool = True
     model: str = "llama3.2:3b"
+    provider: ProviderOverride = None
     system_prompt: str = (
         "You are a worklog assistant. You help the user understand their logged hours "
         "and worklog plans. You can list existing plans, show plan details, and generate "
@@ -148,3 +207,4 @@ class AgentsConfig(_StrictModel):
     verifier: VerifierConfig = VerifierConfig()
     tool_agent: ToolAgentConfig = ToolAgentConfig()
     worklog_agent: WorklogAgentConfig = WorklogAgentConfig()
+    summariser: SummariserConfig = SummariserConfig()

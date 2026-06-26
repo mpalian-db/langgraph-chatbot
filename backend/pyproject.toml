@@ -29,6 +29,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: mark test as integration test (requires Qdrant + Ollama running locally)",
+    "slow: mark test as slow (multi-LLM-call, expect tens of seconds)",
 ]
 
 [tool.ruff]

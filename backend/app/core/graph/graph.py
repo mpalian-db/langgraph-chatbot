@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable
+    from collections.abc import Hashable, Mapping
 
 from langgraph.graph import END, StateGraph
 
-from app.core.config.models import AgentsConfig
+from app.core.config.models import AgentsConfig, ProviderOverride
 from app.core.graph.nodes import (
     answer_generation,
     chat_agent,
@@ -25,9 +25,87 @@ from app.ports.vectorstore import CollectionPort, VectorStorePort
 from app.ports.worklog import WorklogPort
 
 
+class _HasProvider(Protocol):
+    """Structural type covering every agent config that uses an LLM. Pydantic
+    models duck-type into this without inheritance, so the validation walker
+    can iterate a heterogeneous dict and access `provider` without mypy
+    complaining about the common ancestor lacking the field."""
+
+    provider: ProviderOverride
+
+
+def validate_llm_providers(
+    agents_config: AgentsConfig,
+    llms: Mapping[str, LLMPort],
+    default_provider: str,
+    skip_agents: set[str] | None = None,
+) -> None:
+    """Walk every LLM-using agent and confirm its requested provider is in
+    the registry. Raises ValueError listing every failure at once.
+
+    This runs at application startup so misconfiguration (e.g. agents.toml
+    requests `provider = "anthropic"` but ANTHROPIC_API_KEY is unset)
+    surfaces before the first chat request, not as a 500 mid-traffic.
+
+    Collecting all failures into a single error keeps the operator from
+    fixing one missing key, restarting, and discovering another.
+
+    `skip_agents` lets callers exclude agents that won't be instantiated at
+    runtime -- e.g. worklog_agent is only added to the graph when a
+    WorklogPort is configured, so validating its provider when worklog is
+    disabled would falsely crash startup on an unused config."""
+    skip = skip_agents or set()
+    llm_using: dict[str, _HasProvider] = {
+        "router": agents_config.router,
+        "chat_agent": agents_config.chat_agent,
+        "answer_generation": agents_config.answer_generation,
+        "verifier": agents_config.verifier,
+        "tool_agent": agents_config.tool_agent,
+        "worklog_agent": agents_config.worklog_agent,
+        "summariser": agents_config.summariser,
+    }
+    failures: list[str] = []
+    for name, cfg in llm_using.items():
+        if name in skip:
+            continue
+        provider = cfg.provider or default_provider
+        if provider not in llms:
+            failures.append(
+                f"  - agent {name!r} requests provider {provider!r} which is not registered"
+            )
+    if failures:
+        msg = (
+            "LLM provider configuration is invalid. The following node "
+            f"overrides reference unregistered providers (registry has: "
+            f"{sorted(llms.keys())}):\n" + "\n".join(failures)
+        )
+        raise ValueError(msg)
+
+
+def _resolve_llm(agent_cfg: Any, llms: Mapping[str, LLMPort], default_provider: str) -> LLMPort:
+    """Pick the LLM port for an agent: its `provider` override, else default.
+
+    Fails loudly if the requested provider isn't in the registry -- that means
+    the operator asked for an LLM (e.g. anthropic) without supplying credentials,
+    and silently falling back to ollama would mask the misconfiguration. Direct
+    `.provider` access (no `getattr` default) makes a future config refactor
+    that drops the field surface as AttributeError here rather than silently
+    routing through the default."""
+    provider = agent_cfg.provider or default_provider
+    if provider not in llms:
+        msg = (
+            f"agent config requests LLM provider {provider!r} but it is not "
+            f"registered. Available: {sorted(llms.keys())}. Check that any "
+            "required API keys are set in the environment."
+        )
+        raise ValueError(msg)
+    return llms[provider]
+
+
 def build_graph(
     agents_config: AgentsConfig,
-    llm: LLMPort,
+    llms: Mapping[str, LLMPort],
+    default_provider: str,
     vectorstore: VectorStorePort,
     collection_store: CollectionPort,
     embedding: EmbeddingPort,
@@ -35,13 +113,28 @@ def build_graph(
 ):
     builder = StateGraph(GraphState)
 
+    pick = lambda cfg: _resolve_llm(cfg, llms, default_provider)  # noqa: E731
+
+    # Drop the worklog route from the router's known options when no
+    # WorklogPort is configured. Use model_copy() rather than mutating the
+    # input config -- get_agents_config() returns an lru_cached singleton, so
+    # in-place mutation would leak across requests.
+    if worklog is None:
+        router_cfg = agents_config.router.model_copy(
+            update={"routes": [r for r in agents_config.router.routes if r != "worklog"]}
+        )
+    else:
+        router_cfg = agents_config.router
+
     builder.add_node(
         "router",
-        partial(router.run, config=agents_config.router, llm=llm),
+        partial(router.run, config=router_cfg, llm=pick(router_cfg)),
     )
     builder.add_node(
         "chat_agent",
-        partial(chat_agent.run, config=agents_config.chat_agent, llm=llm),
+        partial(
+            chat_agent.run, config=agents_config.chat_agent, llm=pick(agents_config.chat_agent)
+        ),
     )
     builder.add_node(
         "retrieval",
@@ -54,18 +147,22 @@ def build_graph(
     )
     builder.add_node(
         "answer_generation",
-        partial(answer_generation.run, config=agents_config.answer_generation, llm=llm),
+        partial(
+            answer_generation.run,
+            config=agents_config.answer_generation,
+            llm=pick(agents_config.answer_generation),
+        ),
     )
     builder.add_node(
         "verifier",
-        partial(verifier.run, config=agents_config.verifier, llm=llm),
+        partial(verifier.run, config=agents_config.verifier, llm=pick(agents_config.verifier)),
     )
     builder.add_node(
         "tool_agent",
         partial(
             tool_agent.run,
             config=agents_config.tool_agent,
-            llm=llm,
+            llm=pick(agents_config.tool_agent),
             vectorstore=vectorstore,
             collection_store=collection_store,
             embedding=embedding,
@@ -78,15 +175,10 @@ def build_graph(
             partial(
                 worklog_agent.run,
                 config=agents_config.worklog_agent,
-                llm=llm,
+                llm=pick(agents_config.worklog_agent),
                 worklog=worklog,
             ),
         )
-
-    # Silently drop the worklog route when no WorklogPort is configured so the
-    # service starts normally without WORKLOG_WORKER_URL set.
-    if worklog is None:
-        agents_config.router.routes = [r for r in agents_config.router.routes if r != "worklog"]
 
     builder.set_entry_point("router")
 

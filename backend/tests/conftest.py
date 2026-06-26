@@ -23,6 +23,15 @@ def mock_llm():
 
 
 @pytest.fixture
+def mock_llm_registry(mock_llm):
+    """LLM registry for graph tests: same mock under both provider keys.
+
+    Tests that need to assert which provider a node used should construct a
+    distinct mock per key directly rather than reusing this fixture."""
+    return {"ollama": mock_llm, "anthropic": mock_llm}
+
+
+@pytest.fixture
 def mock_vectorstore():
     vs = AsyncMock()
     vs.search = AsyncMock(
@@ -37,6 +46,7 @@ def mock_vectorstore():
     )
     vs.upsert = AsyncMock()
     vs.delete = AsyncMock()
+    vs.get_chunk = AsyncMock(return_value=None)
     return vs
 
 

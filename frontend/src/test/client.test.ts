@@ -5,6 +5,9 @@ import {
   createCollection,
   getCollectionStats,
   deleteCollection,
+  deleteConversation,
+  listConversations,
+  renameConversation,
 } from "../api/client";
 
 function mockFetch(status: number, body: unknown) {
@@ -91,6 +94,61 @@ describe("API client", () => {
       expect(fetch).toHaveBeenCalledWith(
         "/api/collections/my-col",
         expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  describe("listConversations", () => {
+    it("GETs /api/conversations and returns the array", async () => {
+      const overviews = [
+        {
+          conversation_id: "abc",
+          title: "Hello",
+          turn_count: 2,
+          has_summary: false,
+          last_updated_at: 1700000000,
+        },
+      ];
+      vi.stubGlobal("fetch", mockFetch(200, overviews));
+      const result = await listConversations();
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations",
+        expect.objectContaining({ signal: undefined }),
+      );
+      expect(result).toEqual(overviews);
+    });
+  });
+
+  describe("deleteConversation", () => {
+    it("sends DELETE to /api/conversations/{id}", async () => {
+      vi.stubGlobal("fetch", mockFetch(204, null));
+      await deleteConversation("conv-abc");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations/conv-abc",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+
+    it("encodes conversation ids that contain reserved characters", async () => {
+      vi.stubGlobal("fetch", mockFetch(204, null));
+      await deleteConversation("conv with/slash");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations/conv%20with%2Fslash",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  describe("renameConversation", () => {
+    it("PATCHes /api/conversations/{id} with a JSON title body", async () => {
+      vi.stubGlobal("fetch", mockFetch(204, null));
+      await renameConversation("conv-abc", "User Chosen Name");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations/conv-abc",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ title: "User Chosen Name" }),
+        }),
       );
     });
   });
