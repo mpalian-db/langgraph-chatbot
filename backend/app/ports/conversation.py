@@ -136,3 +136,13 @@ class ConversationWriterPort(Protocol):
         as if the boundary had never existed, mixing summarised content
         with the verbatim trail."""
         ...
+
+    async def set_title(self, conversation_id: str, title: str) -> bool:
+        """Set a conversation's title to the user-supplied value. Returns
+        True if a row was updated, False if no conversation exists with
+        that id (the caller can choose to 404).
+
+        Only acts on conversations that already exist; this method does
+        not create the metadata row out of nowhere -- titles are tied to
+        actual conversations that have produced at least one turn."""
+        ...

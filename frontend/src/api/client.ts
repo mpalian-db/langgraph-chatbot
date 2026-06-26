@@ -198,3 +198,19 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     { method: "DELETE" },
   );
 }
+
+export async function renameConversation(
+  conversationId: string,
+  title: string,
+): Promise<void> {
+  // Backend 404s on unknown ids and 422s on empty/long titles. Caller
+  // should trim before passing.
+  return request<void>(
+    `/api/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    },
+  );
+}

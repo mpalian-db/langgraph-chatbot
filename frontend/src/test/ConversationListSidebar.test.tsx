@@ -101,6 +101,124 @@ describe("ConversationListSidebar", () => {
     expect(badges).toHaveLength(1);
   });
 
+  it("does not render the rename button when onRename is not provided", () => {
+    render(
+      <ConversationListSidebar
+        overviews={[ov({ conversation_id: "conv-1", title: "Some title" })]}
+        activeConversationId={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: /rename conversation/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("rename button switches the row to an editable input", async () => {
+    const user = userEvent.setup();
+    render(
+      <ConversationListSidebar
+        overviews={[ov({ conversation_id: "conv-1", title: "Original" })]}
+        activeConversationId={null}
+        onSelect={vi.fn()}
+        onRename={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /rename conversation/i }),
+    );
+    const input = screen.getByRole("textbox", { name: /conversation title/i });
+    expect(input).toHaveValue("Original");
+  });
+
+  it("Enter on the rename input commits via onRename callback", async () => {
+    const onRename = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ConversationListSidebar
+        overviews={[ov({ conversation_id: "conv-1", title: "Old" })]}
+        activeConversationId={null}
+        onSelect={vi.fn()}
+        onRename={onRename}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /rename conversation/i }),
+    );
+    const input = screen.getByRole("textbox", { name: /conversation title/i });
+    await user.clear(input);
+    await user.type(input, "New title{Enter}");
+
+    expect(onRename).toHaveBeenCalledWith("conv-1", "New title");
+  });
+
+  it("Escape on the rename input cancels without calling onRename", async () => {
+    const onRename = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ConversationListSidebar
+        overviews={[ov({ conversation_id: "conv-1", title: "Old" })]}
+        activeConversationId={null}
+        onSelect={vi.fn()}
+        onRename={onRename}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /rename conversation/i }),
+    );
+    const input = screen.getByRole("textbox", { name: /conversation title/i });
+    await user.type(input, "{Escape}");
+
+    expect(onRename).not.toHaveBeenCalled();
+    // Edit mode exited, original title visible again.
+    expect(screen.getByText("Old")).toBeInTheDocument();
+  });
+
+  it("commits a trimmed title and skips no-op edits", async () => {
+    const onRename = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ConversationListSidebar
+        overviews={[ov({ conversation_id: "conv-1", title: "Old" })]}
+        activeConversationId={null}
+        onSelect={vi.fn()}
+        onRename={onRename}
+      />,
+    );
+
+    // Edit but keep the same value -- should NOT call onRename.
+    await user.click(
+      screen.getByRole("button", { name: /rename conversation/i }),
+    );
+    const input = screen.getByRole("textbox", { name: /conversation title/i });
+    await user.type(input, "{Enter}");
+
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("clicking the rename button does not trigger the row's onSelect", async () => {
+    const onSelect = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ConversationListSidebar
+        overviews={[ov({ conversation_id: "conv-1", title: "Title" })]}
+        activeConversationId={null}
+        onSelect={onSelect}
+        onRename={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /rename conversation/i }),
+    );
+
+    // The pencil button must stop propagation so loading isn't triggered.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("renders title when present, truncated id otherwise", () => {
     render(
       <ConversationListSidebar

@@ -1,19 +1,25 @@
 /**
  * ConversationListSidebar -- left-rail navigator over every persisted
- * conversation. Click a row to load it as the active conversation; the
- * next message attaches to the existing server-side history.
+ * conversation. Click a row to load it as the active conversation; click
+ * the pencil icon to rename. The pencil-on-hover affordance keeps the
+ * primary click target (the row) free for the most common action while
+ * keeping the rename action discoverable.
  *
  * Sourced from `GET /api/conversations`, refreshed on conversationId or
- * messages.length change so the row metadata (turn_count, has_summary)
- * stays current as the user chats.
+ * messages.length change so the row metadata (turn_count, has_summary,
+ * title) stays current as the user chats.
  */
 
+import { useState } from "react";
 import type { ConversationOverviewOut } from "../api/types";
 
 interface Props {
   overviews: ConversationOverviewOut[];
   activeConversationId: string | null;
   onSelect: (id: string) => void;
+  /** Called when the user submits a rename. The sidebar handles the
+   *  edit-mode UI; the parent owns the network call + cache refresh. */
+  onRename?: (id: string, newTitle: string) => void;
 }
 
 function formatTimestamp(epochSeconds: number | null): string {
@@ -32,10 +38,137 @@ function formatTimestamp(epochSeconds: number | null): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+interface RowProps {
+  conv: ConversationOverviewOut;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  onRename?: (id: string, newTitle: string) => void;
+}
+
+function ConversationRow({ conv, isActive, onSelect, onRename }: RowProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const startEdit = () => {
+    setDraft(conv.title ?? "");
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setDraft("");
+  };
+
+  const commitEdit = () => {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === conv.title) {
+      cancelEdit();
+      return;
+    }
+    onRename?.(conv.conversation_id, trimmed);
+    setIsEditing(false);
+    setDraft("");
+  };
+
+  return (
+    <li
+      // The row itself is a button: click to load. The pencil button and
+      // input both stopPropagation so they don't double-fire onSelect.
+      role="button"
+      tabIndex={0}
+      onClick={() => !isEditing && onSelect(conv.conversation_id)}
+      onKeyDown={(e) => {
+        if (isEditing) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(conv.conversation_id);
+        }
+      }}
+      className={`group cursor-pointer border-b border-gray-800 px-3 py-2 text-xs transition-colors ${
+        isActive
+          ? "bg-indigo-900/40 text-indigo-200"
+          : "text-gray-300 hover:bg-gray-800"
+      }`}
+      aria-current={isActive ? "true" : undefined}
+    >
+      <div className="flex items-center justify-between gap-2">
+        {isEditing ? (
+          <input
+            autoFocus
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitEdit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+            }}
+            onBlur={cancelEdit}
+            maxLength={200}
+            aria-label="Conversation title"
+            className="min-w-0 flex-1 rounded border border-indigo-500 bg-gray-900 px-1 py-0.5 font-medium text-gray-100 outline-none"
+          />
+        ) : (
+          <>
+            <span
+              className="truncate font-medium text-gray-200"
+              title={conv.title ?? conv.conversation_id}
+            >
+              {conv.title ?? (
+                <code className="font-mono text-[11px] text-gray-400">
+                  {conv.conversation_id.slice(0, 8)}
+                </code>
+              )}
+            </span>
+            <div className="flex items-center gap-1">
+              {onRename && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEdit();
+                  }}
+                  className="hidden text-gray-500 transition-colors hover:text-indigo-300 group-hover:inline"
+                  aria-label="Rename conversation"
+                  title="Rename"
+                >
+                  ✎
+                </button>
+              )}
+              <span className="shrink-0 text-[10px] text-gray-500 tabular-nums">
+                {formatTimestamp(conv.last_updated_at)}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+      {!isEditing && (
+        <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-500">
+          <span>
+            {conv.turn_count} turn{conv.turn_count !== 1 && "s"}
+          </span>
+          {conv.has_summary && (
+            <span className="rounded bg-indigo-900/40 px-1 py-px text-indigo-300">
+              summarised
+            </span>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
 export default function ConversationListSidebar({
   overviews,
   activeConversationId,
   onSelect,
+  onRename,
 }: Props) {
   return (
     <aside
@@ -53,57 +186,15 @@ export default function ConversationListSidebar({
         </p>
       ) : (
         <ul className="flex-1 overflow-y-auto">
-          {overviews.map((conv) => {
-            const isActive = conv.conversation_id === activeConversationId;
-            return (
-              <li
-                key={conv.conversation_id}
-                role="button"
-                tabIndex={0}
-                onClick={() => onSelect(conv.conversation_id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onSelect(conv.conversation_id);
-                  }
-                }}
-                className={`cursor-pointer border-b border-gray-800 px-3 py-2 text-xs transition-colors ${
-                  isActive
-                    ? "bg-indigo-900/40 text-indigo-200"
-                    : "text-gray-300 hover:bg-gray-800"
-                }`}
-                aria-current={isActive ? "true" : undefined}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  {/* Title takes precedence; fall back to truncated id when
-                      the conversation has no user-derived title yet. */}
-                  <span
-                    className="truncate font-medium text-gray-200"
-                    title={conv.title ?? conv.conversation_id}
-                  >
-                    {conv.title ?? (
-                      <code className="font-mono text-[11px] text-gray-400">
-                        {conv.conversation_id.slice(0, 8)}
-                      </code>
-                    )}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-gray-500 tabular-nums">
-                    {formatTimestamp(conv.last_updated_at)}
-                  </span>
-                </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-500">
-                  <span>
-                    {conv.turn_count} turn{conv.turn_count !== 1 && "s"}
-                  </span>
-                  {conv.has_summary && (
-                    <span className="rounded bg-indigo-900/40 px-1 py-px text-indigo-300">
-                      summarised
-                    </span>
-                  )}
-                </div>
-              </li>
-            );
-          })}
+          {overviews.map((conv) => (
+            <ConversationRow
+              key={conv.conversation_id}
+              conv={conv}
+              isActive={conv.conversation_id === activeConversationId}
+              onSelect={onSelect}
+              onRename={onRename}
+            />
+          ))}
         </ul>
       )}
     </aside>

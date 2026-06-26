@@ -14,7 +14,11 @@ import {
 import { useChat } from "../hooks/useChat";
 import { useConversationDetail } from "../hooks/useConversationDetail";
 import { useConversationList } from "../hooks/useConversationList";
-import { deleteConversation, listCollections } from "../api/client";
+import {
+  deleteConversation,
+  listCollections,
+  renameConversation,
+} from "../api/client";
 import ConversationHistoryPanel from "./ConversationHistoryPanel";
 import ConversationListSidebar from "./ConversationListSidebar";
 import SummarisationToast from "./SummarisationToast";
@@ -204,6 +208,21 @@ export default function ChatView() {
     [handleSubmit],
   );
 
+  const handleRenameConversation = useCallback(
+    async (id: string, newTitle: string) => {
+      try {
+        await renameConversation(id, newTitle);
+      } catch {
+        // Silent: on failure the next refetch shows the unchanged title
+        // and the user can try again. No need to toast for a debug surface.
+      }
+      // Force-refresh so the renamed row reflects the new title without
+      // waiting for the next natural refetch trigger.
+      refetchConversationList();
+    },
+    [refetchConversationList],
+  );
+
   const handleDeleteConversation = useCallback(async () => {
     if (!conversationId) return;
     // Confirm before destroying persisted state. Inline confirm() is
@@ -238,6 +257,7 @@ export default function ChatView() {
         overviews={conversationOverviews}
         activeConversationId={conversationId}
         onSelect={loadConversation}
+        onRename={handleRenameConversation}
       />
 
       {/* Middle panel -- collection picker */}

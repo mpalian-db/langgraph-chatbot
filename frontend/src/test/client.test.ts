@@ -7,6 +7,7 @@ import {
   deleteCollection,
   deleteConversation,
   listConversations,
+  renameConversation,
 } from "../api/client";
 
 function mockFetch(status: number, body: unknown) {
@@ -134,6 +135,20 @@ describe("API client", () => {
       expect(fetch).toHaveBeenCalledWith(
         "/api/conversations/conv%20with%2Fslash",
         expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  describe("renameConversation", () => {
+    it("PATCHes /api/conversations/{id} with a JSON title body", async () => {
+      vi.stubGlobal("fetch", mockFetch(204, null));
+      await renameConversation("conv-abc", "User Chosen Name");
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/conversations/conv-abc",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ title: "User Chosen Name" }),
+        }),
       );
     });
   });

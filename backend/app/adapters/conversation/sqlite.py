@@ -338,6 +338,22 @@ class SQLiteConversationStore:
             )
             self._conn.commit()
 
+    async def set_title(self, conversation_id: str, title: str) -> bool:
+        return await asyncio.to_thread(self._set_title_sync, conversation_id, title)
+
+    def _set_title_sync(self, conversation_id: str, title: str) -> bool:
+        # UPDATE only -- never INSERT a metadata row out of nowhere. A
+        # conversation with no turns has no metadata; renaming it would be
+        # naming a thing that doesn't exist. The caller can 404 on a False
+        # return value.
+        with self._lock:
+            cursor = self._conn.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE conversation_id = ?",
+                (title, time.time(), conversation_id),
+            )
+            self._conn.commit()
+        return cursor.rowcount > 0
+
     async def delete_conversation(self, conversation_id: str) -> None:
         await asyncio.to_thread(self._delete_conversation_sync, conversation_id)
 

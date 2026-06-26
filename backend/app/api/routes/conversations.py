@@ -12,7 +12,7 @@ should be gated behind admin auth or moved under /api/system.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import ConversationReaderDep, ConversationWriterDep
 
@@ -44,6 +44,12 @@ class ConversationDetailOut(BaseModel):
     title: str | None = None
     summary: str | None
     turns: list[TurnOut]
+
+
+class RenameConversationRequest(BaseModel):
+    # Trim is left to the caller; we enforce non-empty + max length here.
+    # 200 chars is generous (auto-titles cap at 60) without inviting abuse.
+    title: str = Field(..., min_length=1, max_length=200)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +94,25 @@ async def get_conversation(
         summary=summary,
         turns=[TurnOut(role=t.role, content=t.content) for t in turns],
     )
+
+
+@router.patch("/{conversation_id}", status_code=204)
+async def rename_conversation(
+    conversation_id: str,
+    body: RenameConversationRequest,
+    writer: ConversationWriterDep,
+) -> None:
+    """Set a user-chosen title for an existing conversation.
+
+    Returns 404 if the conversation has no metadata row (i.e. has never
+    produced a turn); titles are tied to real conversations, never
+    floating identifiers. Validation: title trimmed by Pydantic via
+    min_length=1, max_length=200 -- the route doesn't trim further so a
+    user-supplied "  Hello  " preserves leading/trailing whitespace if
+    intentional. Frontend trims for safety."""
+    updated = await writer.set_title(conversation_id, body.title)
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"conversation {conversation_id!r} not found")
 
 
 @router.delete("/{conversation_id}", status_code=204)

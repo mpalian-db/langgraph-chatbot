@@ -210,3 +210,45 @@ async def test_delete_then_get_returns_404(client: AsyncClient, store: SQLiteCon
 
     detail_after = await client.get("/api/conversations/conv-x")
     assert detail_after.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/conversations/{id}  (manual rename)
+# ---------------------------------------------------------------------------
+
+
+async def test_patch_renames_conversation(client: AsyncClient, store: SQLiteConversationStore):
+    await store.append("conv-1", "user", "auto title from message")
+
+    resp = await client.patch("/api/conversations/conv-1", json={"title": "User Chosen Name"})
+
+    assert resp.status_code == 204
+    assert await store.get_conversation_title("conv-1") == "User Chosen Name"
+
+
+async def test_patch_returns_404_for_unknown_conversation(client: AsyncClient):
+    """Renaming a never-existed conversation should 404 -- the request
+    can't be satisfied because there's nothing to rename. Distinct from
+    DELETE which is idempotent on missing ids."""
+    resp = await client.patch("/api/conversations/never-seen", json={"title": "x"})
+    assert resp.status_code == 404
+
+
+async def test_patch_rejects_empty_title(client: AsyncClient, store: SQLiteConversationStore):
+    """Empty title doesn't help anyone find the conversation; pydantic
+    blocks it at the request boundary via min_length=1."""
+    await store.append("conv-1", "user", "hi")
+
+    resp = await client.patch("/api/conversations/conv-1", json={"title": ""})
+
+    assert resp.status_code == 422  # pydantic validation error
+
+
+async def test_patch_rejects_overly_long_title(client: AsyncClient, store: SQLiteConversationStore):
+    """200-char cap. Anything longer is almost certainly accidental
+    (paste-the-whole-message) and would wreck the sidebar layout."""
+    await store.append("conv-1", "user", "hi")
+
+    resp = await client.patch("/api/conversations/conv-1", json={"title": "x" * 201})
+
+    assert resp.status_code == 422

@@ -374,6 +374,49 @@ async def test_get_conversation_title_returns_none_for_unknown(
     assert title is None
 
 
+async def test_set_title_overwrites_auto_title(
+    store: SQLiteConversationStore,
+):
+    """User-driven rename takes precedence over the auto-derived title.
+    Distinct from the auto-title contract: append-time only sets title
+    when missing; set_title unconditionally overwrites."""
+    await store.append("conv-1", "user", "auto title from first message")
+    assert await store.get_conversation_title("conv-1") == "auto title from first message"
+
+    updated = await store.set_title("conv-1", "User Chosen Name")
+
+    assert updated is True
+    assert await store.get_conversation_title("conv-1") == "User Chosen Name"
+
+
+async def test_set_title_returns_false_for_unknown_conversation(
+    store: SQLiteConversationStore,
+):
+    """Renaming a conversation that has no metadata row (never produced
+    a turn) is a no-op returning False, so the route can 404. We never
+    create a metadata row out of nowhere -- titles attach to real
+    conversations only."""
+    updated = await store.set_title("never-seen", "doesn't matter")
+    assert updated is False
+    assert await store.get_conversation_title("never-seen") is None
+
+
+async def test_set_title_does_not_resurrect_after_delete(
+    store: SQLiteConversationStore,
+):
+    """Once a conversation is deleted, set_title must not bring back a
+    ghost metadata row. The False return value lets the route handle this
+    consistently with delete: both are idempotent end-state operations."""
+    await store.append("conv-1", "user", "doomed")
+    await store.delete_conversation("conv-1")
+
+    updated = await store.set_title("conv-1", "ghost")
+
+    assert updated is False
+    overviews = await store.list_conversations()
+    assert overviews == []
+
+
 async def test_delete_conversation_clears_metadata_row_too(
     store: SQLiteConversationStore,
 ):
